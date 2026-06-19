@@ -112,7 +112,6 @@ def health():
 
 @app.route("/debug-pin")
 def debug_pin():
-    import repr as reprlib
     raw = os.environ.get("BREXIS_PIN", "NOT SET")
     return f"PIN repr: {repr(raw)} | len: {len(raw)}"
 
