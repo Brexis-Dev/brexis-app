@@ -15,7 +15,7 @@ load_dotenv(override=False)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "brexis-dev-secret")
 
-BREXIS_PIN = os.environ.get("BREXIS_PIN", "1234")
+BREXIS_PIN = os.environ.get("BREXIS_PIN", "1234").strip()
 OWNER_USER_ID = int(os.environ.get("OWNER_USER_ID", "1"))
 
 SYSTEM_PROMPT = """You are Brexis, a dedicated business assistant for Saturday Morning PJs, \
