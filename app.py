@@ -113,7 +113,8 @@ def health():
 @app.route("/debug-pin")
 def debug_pin():
     raw = os.environ.get("BREXIS_PIN", "NOT SET")
-    return f"PIN repr: {repr(raw)} | len: {len(raw)}"
+    keys = [k for k in os.environ.keys()]
+    return f"PIN repr: {repr(raw)} | len: {len(raw)}<br>All keys: {sorted(keys)}"
 
 
 @app.route("/", methods=["GET", "POST"])
