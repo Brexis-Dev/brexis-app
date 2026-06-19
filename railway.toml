@@ -4,3 +4,6 @@ builder = "nixpacks"
 [deploy]
 startCommand = "gunicorn app:app"
 healthcheckPath = "/health"
+
+[variables]
+RAILWAY_BETA_ENABLE_RUNTIME_V2 = "false"
