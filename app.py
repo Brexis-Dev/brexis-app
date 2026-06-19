@@ -197,7 +197,11 @@ def send():
     def generate():
         full_response = ""
         try:
-            client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            api_key = os.environ.get("ANTHROPIC_API_KEY") or db.get_config("ANTHROPIC_API_KEY")
+            if not api_key:
+                yield f"data: {json.dumps({'error': 'Anthropic API key not configured. Go to /settings to add it.'})}\n\n"
+                return
+            client = Anthropic(api_key=api_key)
 
             # Agentic loop — handle tool use
             while True:
@@ -251,6 +255,23 @@ def send():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    saved = False
+    if request.method == "POST":
+        api_key = request.form.get("api_key", "").strip()
+        db_url = request.form.get("db_url", "").strip()
+        if api_key:
+            db.set_config("ANTHROPIC_API_KEY", api_key)
+        if db_url:
+            db.set_config("DATABASE_URL", db_url)
+        saved = True
+    current_key = db.get_config("ANTHROPIC_API_KEY") or ""
+    masked = ("sk-ant-..." + current_key[-6:]) if len(current_key) > 10 else ""
+    return render_template("settings.html", masked=masked, saved=saved)
 
 
 with app.app_context():

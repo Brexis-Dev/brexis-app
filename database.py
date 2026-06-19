@@ -35,6 +35,40 @@ def row(r):
     return dict(r) if r else None
 
 
+def get_config(key):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        p = ph()
+        try:
+            cur.execute(f"SELECT value FROM brexis_config WHERE key={p}", (key,))
+            row = cur.fetchone()
+            return row["value"] if row else None
+        except Exception:
+            return None
+    finally:
+        conn.close()
+
+
+def set_config(key, value):
+    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
+    pg = _is_postgres(url)
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        if pg:
+            cur.execute(
+                f"INSERT INTO brexis_config (key, value) VALUES ({p},{p}) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+                (key, value)
+            )
+        else:
+            cur.execute("INSERT OR REPLACE INTO brexis_config (key, value) VALUES (?,?)", (key, value))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db():
     url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
     pg = _is_postgres(url)
@@ -48,6 +82,10 @@ def init_db():
             title      TEXT DEFAULT 'New Conversation',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS brexis_config (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         )""")
         cur.execute(f"""CREATE TABLE IF NOT EXISTS chat_messages (
             id         {auto},

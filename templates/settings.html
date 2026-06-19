@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — Brexis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f3ff; min-height: 100vh; }
+    .topbar { background: #1e1b4b; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { color: #d4af37; font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-decoration: none; }
+    .back { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
+    .back:hover { color: white; }
+    .container { max-width: 540px; margin: 40px auto; padding: 0 20px; }
+    .card { background: white; border-radius: 14px; padding: 28px; box-shadow: 0 1px 4px rgba(124,58,237,0.08); }
+    h1 { color: #1e1b4b; font-size: 1.3rem; margin-bottom: 4px; }
+    .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 24px; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    input[type=text], input[type=password] {
+      width: 100%; padding: 10px 12px; border: 1.5px solid #ede9fe;
+      border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+    }
+    input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+    .hint { font-size: 0.75rem; color: #9ca3af; margin-top: 5px; }
+    .btn { background: #7c3aed; color: white; border: none; border-radius: 8px; padding: 10px 24px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: #5b21b6; }
+    .success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 20px; }
+    .current { background: #f5f3ff; border: 1px solid #ede9fe; border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; color: #6b7280; margin-top: 6px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/chat" class="brand">BREXIS</a>
+    <a href="/chat" class="back">← Back to chat</a>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h1>Settings</h1>
+      <div class="sub">Configure Brexis API access</div>
+
+      {% if saved %}
+      <div class="success">✓ Settings saved successfully.</div>
+      {% endif %}
+
+      <form method="POST">
+        <div class="form-group">
+          <label>Anthropic API Key</label>
+          <input type="password" name="api_key" placeholder="sk-ant-api03-..." autocomplete="off">
+          {% if masked %}
+          <div class="current">Current: {{ masked }}</div>
+          {% endif %}
+          <div class="hint">Your key from console.anthropic.com — stored securely in the database.</div>
+        </div>
+        <button class="btn" type="submit">Save Settings</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
