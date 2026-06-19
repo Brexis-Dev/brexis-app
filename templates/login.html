@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brexis — Purple Horizon</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%);
+    }
+    .login-card {
+      background: white;
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .avatar {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #d4af37;
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin: 0 auto 20px;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    }
+    h1 { color: #1e1b4b; font-size: 1.8rem; font-weight: 800; letter-spacing: 1px; }
+    .sub { color: #6b7280; font-size: 0.85rem; margin-top: 4px; margin-bottom: 32px; }
+    .pin-input {
+      width: 100%;
+      padding: 14px;
+      font-size: 1.4rem;
+      letter-spacing: 8px;
+      text-align: center;
+      border: 2px solid #ede9fe;
+      border-radius: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: monospace;
+    }
+    .pin-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    .btn-enter {
+      width: 100%;
+      margin-top: 16px;
+      padding: 14px;
+      background: #7c3aed;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .btn-enter:hover { background: #5b21b6; }
+    .error {
+      margin-top: 14px;
+      color: #dc2626;
+      font-size: 0.85rem;
+      background: #fee2e2;
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    .platform { color: #9ca3af; font-size: 0.72rem; margin-top: 24px; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="avatar">B</div>
+    <h1>BREXIS</h1>
+    <div class="sub">Purple Horizon · Saturday Morning PJs</div>
+    <form method="POST">
+      <input
+        class="pin-input"
+        type="password"
+        name="pin"
+        placeholder="••••"
+        autofocus
+        autocomplete="off"
+        inputmode="numeric"
+      >
+      <button class="btn-enter" type="submit">Enter</button>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+    </form>
+    <div class="platform">Business Intelligence Platform</div>
+  </div>
+</body>
+</html>
