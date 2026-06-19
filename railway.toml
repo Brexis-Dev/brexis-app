@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt && echo \"ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY\" >> .env && echo \"DATABASE_URL=$DATABASE_URL\" >> .env && echo \"SECRET_KEY=$SECRET_KEY\" >> .env && echo \"BREXIS_PIN=$BREXIS_PIN\" >> .env && echo \"OWNER_USER_ID=$OWNER_USER_ID\" >> .env"
+buildCommand = "echo \"ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY\" > .env && echo \"DATABASE_URL=$DATABASE_URL\" >> .env && echo \"SECRET_KEY=$SECRET_KEY\" >> .env && echo \"BREXIS_PIN=$BREXIS_PIN\" >> .env && echo \"OWNER_USER_ID=$OWNER_USER_ID\" >> .env"
 
 [deploy]
 startCommand = "gunicorn app:app"
