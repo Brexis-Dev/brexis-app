@@ -237,15 +237,25 @@ def fetch_pricecharting(title, platform="Switch"):
         if not products:
             return {"found": False, "error": "No results found"}
 
-        platform_slug = _PC_PLATFORM_MAP.get(platform, "").replace("-", " ").lower()
-        best = None
-        for p in products:
-            if title.lower() in p.get("product-name", "").lower() and \
-               platform_slug in p.get("console-name", "").lower():
-                best = p
-                break
-        if best is None:
-            best = products[0]
+        platform_slug = _PC_PLATFORM_MAP.get(platform, platform).replace("-", " ").lower()
+        title_lower = title.lower()
+
+        # Score each result — prioritize platform match, then title match
+        def score(p):
+            name_match = title_lower in p.get("product-name", "").lower()
+            plat_match = platform_slug in p.get("console-name", "").lower()
+            return (2 if plat_match else 0) + (1 if name_match else 0)
+
+        scored = sorted(products, key=score, reverse=True)
+        best = scored[0]
+
+        # If top result doesn't match the platform at all, return clear error
+        if platform_slug and platform_slug not in best.get("console-name", "").lower():
+            return {
+                "found": False,
+                "error": f"No {platform} match found for '{title}' on PriceCharting. "
+                         f"Closest result: {best.get('product-name')} ({best.get('console-name')})"
+            }
 
         pid = best.get("id")
         price_data = best
