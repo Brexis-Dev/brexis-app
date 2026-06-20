@@ -208,8 +208,20 @@ def fetch_ebay_sold(title, platform="Switch"):
         _scan_injection(raw)
 
         soup = BeautifulSoup(raw, "html.parser")
+
+        # Try primary selector, then fallbacks for eBay layout changes
+        price_tags = soup.select(".s-item__price")
+        if not price_tags:
+            price_tags = soup.select("[class*='item__price']")
+        if not price_tags:
+            price_tags = soup.select(".srp-results .s-item span.BOLD")
+
+        # Log what we got for debugging
+        page_title = soup.title.string if soup.title else "no title"
+        _audit("RESPONSE_RECEIVED", f"eBay page='{page_title[:80]}' price_tags={len(price_tags)} page_size={len(raw)}")
+
         prices = []
-        for tag in soup.select(".s-item__price"):
+        for tag in price_tags:
             text = tag.get_text(" ", strip=True)
             nums = re.findall(r"\d+\.\d{2}", text)
             if len(nums) == 2:
@@ -224,8 +236,11 @@ def fetch_ebay_sold(title, platform="Switch"):
             prices = [p for p in prices if q1 - 1.5 * iqr <= p <= q3 + 1.5 * iqr]
 
         if not prices:
-            _audit("RESPONSE_RECEIVED", "eBay: no prices found", "warning")
-            return {"found": False, "error": "No sold prices found on eBay"}
+            return {
+                "found": False,
+                "error": f"No sold prices found on eBay (page: '{page_title[:60]}', tags found: {len(price_tags)})",
+                "search_url": url,
+            }
 
         _audit("RESPONSE_RECEIVED", f"eBay: {len(prices)} prices, avg=${round(sum(prices)/len(prices),2)}")
         return {
