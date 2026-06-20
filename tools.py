@@ -65,6 +65,58 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "fetch_ebay_sold",
+        "description": "Look up recent sold prices for a game or item on eBay. Returns average, low, high, and count of sold listings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Item or game title to search"},
+                "platform": {"type": "string", "description": "Platform, e.g. Switch, PS4, Xbox One"}
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "fetch_pricecharting",
+        "description": "Look up loose, CIB, sealed, and graded prices from PriceCharting for a video game.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Game title"},
+                "platform": {"type": "string", "description": "Platform, e.g. Switch, PS4, GBA"}
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "fetch_tcgplayer",
+        "description": "Look up Pokémon TCG card prices from TCGPlayer. Requires TCGPlayer API key in /settings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "card_name": {"type": "string", "description": "Card name to search"},
+                "set_name": {"type": "string", "description": "Optional set name to narrow results"}
+            },
+            "required": ["card_name"]
+        }
+    },
+    {
+        "name": "fetch_shipping_rates",
+        "description": "Get shipping rate estimates via ShipEngine. Requires ShipEngine API key in /settings.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from_zip": {"type": "string", "description": "Origin ZIP code"},
+                "to_zip": {"type": "string", "description": "Destination ZIP code"},
+                "weight_oz": {"type": "number", "description": "Package weight in ounces"},
+                "length": {"type": "number", "description": "Package length in inches (default 12)"},
+                "width": {"type": "number", "description": "Package width in inches (default 9)"},
+                "height": {"type": "number", "description": "Package height in inches (default 4)"}
+            },
+            "required": ["from_zip", "to_zip", "weight_oz"]
+        }
+    },
+    {
         "name": "send_email",
         "description": "Send an email via SendGrid. Use for test emails, one-off reports, or any message the owner asks to email.",
         "input_schema": {
@@ -164,6 +216,55 @@ FEE_RATES = {
 
 
 def execute_tool(name, inputs, user_id):
+    if name == "fetch_ebay_sold":
+        import gateway
+        r = gateway.fetch_ebay_sold(inputs["title"], inputs.get("platform", "Switch"))
+        if not r["found"]:
+            return f"eBay lookup failed: {r['error']}"
+        return (
+            f"eBay sold listings — {inputs['title']} ({inputs.get('platform','Switch')}):\n"
+            f"- Average: ${r['avg']}\n"
+            f"- Low: ${r['low']} | High: ${r['high']}\n"
+            f"- Based on {r['count']} sold listings\n"
+            f"- Search: {r.get('search_url','')}"
+        )
+
+    if name == "fetch_pricecharting":
+        import gateway
+        r = gateway.fetch_pricecharting(inputs["title"], inputs.get("platform", "Switch"))
+        if not r["found"]:
+            return f"PriceCharting lookup failed: {r['error']}"
+        lines = [f"PriceCharting — {r['name']} ({r['platform']}):"]
+        if r.get("loose"):  lines.append(f"- Loose: ${r['loose']}")
+        if r.get("cib"):    lines.append(f"- CIB: ${r['cib']}")
+        if r.get("sealed"): lines.append(f"- Sealed: ${r['sealed']}")
+        if r.get("graded"): lines.append(f"- Graded: ${r['graded']}")
+        lines.append(f"- Source: {r['url']}")
+        return "\n".join(lines)
+
+    if name == "fetch_tcgplayer":
+        import gateway
+        r = gateway.fetch_tcgplayer(inputs["card_name"], inputs.get("set_name", ""))
+        if not r["found"]:
+            return f"TCGPlayer lookup failed: {r['error']}"
+        lines = [f"TCGPlayer — {r['name']} ({r.get('set','')})"]
+        for sub, p in r.get("prices", {}).items():
+            lines.append(f"- {sub}: Market ${p.get('market','N/A')} | Low ${p.get('low','N/A')} | High ${p.get('high','N/A')}")
+        return "\n".join(lines)
+
+    if name == "fetch_shipping_rates":
+        import gateway
+        r = gateway.fetch_shipping_rates(
+            inputs["from_zip"], inputs["to_zip"], inputs["weight_oz"],
+            inputs.get("length", 12), inputs.get("width", 9), inputs.get("height", 4)
+        )
+        if not r["found"]:
+            return f"ShipEngine lookup failed: {r['error']}"
+        lines = [f"Shipping rates ({inputs['from_zip']} → {inputs['to_zip']}, {inputs['weight_oz']}oz):"]
+        for rate in r["rates"]:
+            lines.append(f"- {rate['carrier']} {rate['service']}: ${rate['rate']} ({rate['days']} days)")
+        return "\n".join(lines)
+
     if name == "send_email":
         import emailer
         subject = inputs.get("subject", "Message from Brexis")

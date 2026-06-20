@@ -279,6 +279,7 @@ def settings():
         fields = [
             "api_key", "discord_token", "discord_guild_id",
             "sendgrid_key", "email_to", "email_from",
+            "pricecharting_key", "tcgplayer_key", "shipengine_key",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -287,6 +288,9 @@ def settings():
             "sendgrid_key": "SENDGRID_API_KEY",
             "email_to": "EMAIL_TO",
             "email_from": "EMAIL_FROM",
+            "pricecharting_key": "PRICECHARTING_API_KEY",
+            "tcgplayer_key": "TCGPLAYER_API_KEY",
+            "shipengine_key": "SHIPENGINE_API_KEY",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -304,6 +308,13 @@ def settings():
     email_to = db.get_config("EMAIL_TO") or ""
     email_from = db.get_config("EMAIL_FROM") or ""
 
+    pc_key = db.get_config("PRICECHARTING_API_KEY") or ""
+    masked_pc = ("pc-..." + pc_key[-6:]) if len(pc_key) > 10 else ""
+    tcg_key = db.get_config("TCGPLAYER_API_KEY") or ""
+    masked_tcg = ("tcg-..." + tcg_key[-6:]) if len(tcg_key) > 10 else ""
+    se_key = db.get_config("SHIPENGINE_API_KEY") or ""
+    masked_se = ("se-..." + se_key[-6:]) if len(se_key) > 10 else ""
+
     import discord_bot
     import scheduler as sched
     discord_status = "Connected" if discord_bot.is_ready() else "Not connected"
@@ -317,6 +328,9 @@ def settings():
         masked_sg=masked_sg,
         email_to=email_to,
         email_from=email_from,
+        masked_pc=masked_pc,
+        masked_tcg=masked_tcg,
+        masked_se=masked_se,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )

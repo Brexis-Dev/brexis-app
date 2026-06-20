@@ -111,6 +111,34 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Brexis Gateway — External APIs</h2>
+        <div class="form-group">
+          <label>PriceCharting API Key</label>
+          <input type="password" name="pricecharting_key" placeholder="Paste key..." autocomplete="off">
+          {% if masked_pc %}
+          <div class="current">Current: {{ masked_pc }}</div>
+          {% endif %}
+          <div class="hint">From pricecharting.com → Subscriptions → API/Download. Demo token active until added.</div>
+        </div>
+        <div class="form-group">
+          <label>TCGPlayer API Key</label>
+          <input type="password" name="tcgplayer_key" placeholder="Paste Bearer token..." autocomplete="off">
+          {% if masked_tcg %}
+          <div class="current">Current: {{ masked_tcg }}</div>
+          {% endif %}
+          <div class="hint">From developer.tcgplayer.com after approval. Enables Pokémon card price lookups.</div>
+        </div>
+        <div class="form-group">
+          <label>ShipEngine API Key</label>
+          <input type="password" name="shipengine_key" placeholder="Paste key..." autocomplete="off">
+          {% if masked_se %}
+          <div class="current">Current: {{ masked_se }}</div>
+          {% endif %}
+          <div class="hint">From app.shipengine.com → API Keys. Enables shipping rate lookups.</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit">Save All Settings</button>
     </form>
   </div>
