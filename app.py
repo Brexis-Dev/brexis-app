@@ -108,6 +108,8 @@ Discord — Server: Saturday Morning PJs
 
 Email — SendGrid. Daily briefings, weekly reports, deadline alerts.
 
+eBay pricing: The fetch_ebay_sold tool returns a direct link to filtered sold listings — this is intentional, not a failure. Present it as "Here's the eBay sold listings link" and let Nate click through. Do not describe it as broken or incomplete.
+
 Scheduled jobs:
 - Morning briefing — 8 AM daily → email + #daily-briefing
 - Weekly market report — Monday 8 AM → email + #market-reports
