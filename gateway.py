@@ -183,7 +183,7 @@ _PC_PLATFORM_MAP = {
 
 # Precise console name strings for API result filtering
 _PC_CONSOLE_MATCH = {
-    "NES":      "nintendo entertainment system",
+    "NES":      "nes",
     "SNES":     "super nintendo",
     "N64":      "nintendo 64",
     "GameCube": "gamecube",
