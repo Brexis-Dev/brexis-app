@@ -139,6 +139,23 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>3D Printer — Flashforge AD5X</h2>
+        <div class="form-group">
+          <label>Printer Relay URL</label>
+          <input type="text" name="printer_relay_url" value="{{ printer_relay_url }}" placeholder="https://printer.yourdomain.com">
+          <div class="hint">Cloudflare Tunnel URL pointing to brexis-relay running on your local machine.</div>
+        </div>
+        <div class="form-group">
+          <label>Relay Secret Token</label>
+          <input type="password" name="printer_relay_secret" placeholder="Paste RELAY_SECRET from relay .env..." autocomplete="off">
+          {% if masked_relay_secret %}
+          <div class="current">Current: {{ masked_relay_secret }}</div>
+          {% endif %}
+          <div class="hint">Must match RELAY_SECRET in brexis-relay/.env on your local machine.</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit">Save All Settings</button>
     </form>
   </div>

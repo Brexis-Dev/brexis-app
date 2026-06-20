@@ -2,6 +2,61 @@ import json
 import database as db
 
 
+# ── Filament recommendation matrix ──────────────────────────────────────────
+
+_FILAMENT_MATRIX = {
+    "PLA": {
+        "strength": {"nozzle": 200, "bed": 60, "speed_mm_s": 60,  "layer_mm": 0.20, "infill_pct": 40, "pattern": "gyroid"},
+        "balanced": {"nozzle": 200, "bed": 60, "speed_mm_s": 67,  "layer_mm": 0.20, "infill_pct": 15, "pattern": "gyroid"},
+        "fast":     {"nozzle": 205, "bed": 60, "speed_mm_s": 100, "layer_mm": 0.25, "infill_pct": 10, "pattern": "grid"},
+    },
+    "PETG": {
+        "strength": {"nozzle": 240, "bed": 85, "speed_mm_s": 50,  "layer_mm": 0.20, "infill_pct": 40, "pattern": "gyroid"},
+        "balanced": {"nozzle": 240, "bed": 85, "speed_mm_s": 75,  "layer_mm": 0.20, "infill_pct": 20, "pattern": "gyroid"},
+        "fast":     {"nozzle": 245, "bed": 85, "speed_mm_s": 92,  "layer_mm": 0.25, "infill_pct": 15, "pattern": "grid"},
+    },
+    "TPU": {
+        "strength": {"nozzle": 220, "bed": 45, "speed_mm_s": 25,  "layer_mm": 0.20, "infill_pct": 40, "pattern": "gyroid"},
+        "balanced": {"nozzle": 220, "bed": 45, "speed_mm_s": 33,  "layer_mm": 0.20, "infill_pct": 20, "pattern": "gyroid"},
+        "fast":     {"nozzle": 225, "bed": 50, "speed_mm_s": 42,  "layer_mm": 0.25, "infill_pct": 15, "pattern": "grid"},
+    },
+    "PLA-CF": {
+        "strength": {"nozzle": 220, "bed": 65, "speed_mm_s": 53,  "layer_mm": 0.20, "infill_pct": 40, "pattern": "gyroid"},
+        "balanced": {"nozzle": 220, "bed": 65, "speed_mm_s": 67,  "layer_mm": 0.20, "infill_pct": 20, "pattern": "gyroid"},
+        "fast":     {"nozzle": 225, "bed": 65, "speed_mm_s": 92,  "layer_mm": 0.25, "infill_pct": 15, "pattern": "grid"},
+    },
+    "PETG-CF": {
+        "strength": {"nozzle": 250, "bed": 90, "speed_mm_s": 47,  "layer_mm": 0.20, "infill_pct": 40, "pattern": "gyroid"},
+        "balanced": {"nozzle": 250, "bed": 90, "speed_mm_s": 67,  "layer_mm": 0.20, "infill_pct": 20, "pattern": "gyroid"},
+        "fast":     {"nozzle": 255, "bed": 90, "speed_mm_s": 83,  "layer_mm": 0.25, "infill_pct": 15, "pattern": "grid"},
+    },
+}
+
+
+def _call_relay(method, path, json_data=None):
+    """Call the Brexis Print Relay running on Nate's local network."""
+    import requests as req
+    relay_url = db.get_config("PRINTER_RELAY_URL")
+    if not relay_url:
+        return {"error": "Printer relay not configured. Add PRINTER_RELAY_URL in /settings → 3D Printer."}
+    secret = db.get_config("PRINTER_RELAY_SECRET") or ""
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+    try:
+        url = relay_url.rstrip("/") + path
+        if method == "GET":
+            r = req.get(url, headers=headers, timeout=15)
+        else:
+            r = req.post(url, json=json_data, headers=headers, timeout=20)
+        r.raise_for_status()
+        return r.json()
+    except req.exceptions.ConnectionError:
+        return {"error": "Can't reach the print relay. Check that it's running and the tunnel is up."}
+    except req.exceptions.Timeout:
+        return {"error": "Print relay timed out. Printer may be busy."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 TOOL_DEFINITIONS = [
     {
         "name": "send_discord_message",
@@ -185,6 +240,100 @@ TOOL_DEFINITIONS = [
                 "notes": {"type": "string", "description": "Any notes about this title"}
             },
             "required": ["title"]
+        }
+    },
+    # ── 3D Printer tools ──────────────────────────────────────────────────────
+    {
+        "name": "get_print_status",
+        "description": "Get the current status of the Flashforge AD5X 3D printer — print progress, temperatures, and machine state.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "control_print",
+        "description": "Pause, resume, or cancel an active print job on the AD5X.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["pause", "resume", "cancel"],
+                    "description": "Action to take on the current print job"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "set_temperatures",
+        "description": "Set nozzle and/or bed temperature on the AD5X. AD5X max nozzle is 300°C.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nozzle": {"type": "number", "description": "Nozzle temperature in °C (max 300)"},
+                "bed":    {"type": "number", "description": "Bed temperature in °C"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "recommend_settings",
+        "description": "Get recommended print settings (temps, speed, layer height, infill) for a filament type and print goal.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filament": {
+                    "type": "string",
+                    "enum": ["PLA", "PETG", "TPU", "PLA-CF", "PETG-CF"],
+                    "description": "Filament material type"
+                },
+                "goal": {
+                    "type": "string",
+                    "enum": ["strength", "balanced", "fast"],
+                    "description": "Print priority: strength (high infill/slow), balanced, or fast"
+                }
+            },
+            "required": ["filament", "goal"]
+        }
+    },
+    {
+        "name": "get_slicer_profiles",
+        "description": "List available slicing profiles in OrcaSlicer API.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_slicer_job_status",
+        "description": "Check the status of an async OrcaSlicer slice job by job ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Job ID returned by submit_slice_job"}
+            },
+            "required": ["job_id"]
+        }
+    },
+    {
+        "name": "submit_slice_job",
+        "description": "Send a model file to OrcaSlicer for slicing. Returns a job ID to track progress.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "description": "Path to the .STL or .3MF file on the local relay machine"},
+                "profile": {"type": "string", "description": "OrcaSlicer profile name to use"},
+                "settings": {
+                    "type": "object",
+                    "description": "Optional overrides: nozzle_temp, bed_temp, layer_height, infill_density, speed_mm_s"
+                },
+                "async_mode": {"type": "boolean", "description": "True to return immediately with job ID, False to wait for completion"}
+            },
+            "required": ["model", "profile"]
         }
     },
     {
@@ -412,5 +561,115 @@ def execute_tool(name, inputs, user_id):
             db.log_task("scheduler", "manual_trigger", f"Triggered: {job_id}", "success")
             return f"✓ Triggered job '{job_id}' — it is running in the background now."
         return f"Unknown job '{job_id}'."
+
+    # ── 3D Printer tools ──────────────────────────────────────────────────────
+
+    if name == "get_print_status":
+        r = _call_relay("GET", "/printer/status")
+        if "error" in r:
+            db.log_task("printer", "get_status", r["error"], "failed")
+            return f"Printer unreachable: {r['error']}"
+        db.log_task("printer", "get_status", str(r.get("status", "")), "success")
+        if not r.get("connected"):
+            return f"Printer offline: {r.get('error', 'no connection')}"
+        lines = ["AD5X Status:"]
+        if r.get("status"):
+            lines.append(f"- State: {r['status']}")
+        if r.get("temps"):
+            t = r["temps"]
+            lines.append(f"- Nozzle: {t.get('current_nozzle', 'N/A')}°C / target {t.get('target_nozzle', 'N/A')}°C")
+            lines.append(f"- Bed: {t.get('current_bed', 'N/A')}°C / target {t.get('target_bed', 'N/A')}°C")
+        if r.get("machine"):
+            m = r["machine"]
+            if m.get("print_progress"):
+                lines.append(f"- Progress: {m['print_progress']}%")
+            if m.get("file_name"):
+                lines.append(f"- File: {m['file_name']}")
+        return "\n".join(lines)
+
+    if name == "control_print":
+        action = inputs["action"]
+        r = _call_relay("POST", "/printer/control", {"action": action})
+        if "error" in r:
+            db.log_task("printer", f"control_{action}", r["error"], "failed")
+            return f"Control failed ({action}): {r['error']}"
+        db.log_task("printer", f"control_{action}", f"action={action}", "success")
+        return f"✓ Print {action}d."
+
+    if name == "set_temperatures":
+        nozzle = inputs.get("nozzle")
+        bed = inputs.get("bed")
+        if nozzle and int(nozzle) > 300:
+            return "Nozzle temp exceeds AD5X max of 300°C. Set it lower."
+        r = _call_relay("POST", "/printer/temps", {"nozzle": nozzle, "bed": bed})
+        if "error" in r:
+            db.log_task("printer", "set_temps", r["error"], "failed")
+            return f"Temperature set failed: {r['error']}"
+        parts = []
+        if nozzle: parts.append(f"nozzle → {nozzle}°C")
+        if bed:    parts.append(f"bed → {bed}°C")
+        db.log_task("printer", "set_temps", ", ".join(parts), "success")
+        return f"✓ Temperatures set: {', '.join(parts)}."
+
+    if name == "recommend_settings":
+        filament = inputs.get("filament", "PLA")
+        goal = inputs.get("goal", "balanced")
+        matrix = _FILAMENT_MATRIX.get(filament)
+        if not matrix:
+            return f"No profile for filament '{filament}'. Options: {', '.join(_FILAMENT_MATRIX.keys())}"
+        settings = matrix.get(goal)
+        if not settings:
+            return f"No '{goal}' goal for {filament}. Options: strength, balanced, fast"
+        return (
+            f"{filament} — {goal.title()} profile:\n"
+            f"- Nozzle: {settings['nozzle']}°C\n"
+            f"- Bed: {settings['bed']}°C\n"
+            f"- Speed: {settings['speed_mm_s']} mm/s\n"
+            f"- Layer height: {settings['layer_mm']} mm\n"
+            f"- Infill: {settings['infill_pct']}% {settings['pattern']}\n"
+            f"- Build volume max: 220×220×220mm"
+        )
+
+    if name == "get_slicer_profiles":
+        r = _call_relay("GET", "/slicer/profiles")
+        if "error" in r:
+            return f"OrcaSlicer not reachable: {r['error']}"
+        profiles = r if isinstance(r, list) else r.get("profiles", [])
+        if not profiles:
+            return "No slicer profiles found. Is the OrcaSlicer Docker container running?"
+        return "Available slicer profiles:\n" + "\n".join(f"- {p}" for p in profiles)
+
+    if name == "get_slicer_job_status":
+        job_id = inputs["job_id"]
+        r = _call_relay("GET", f"/slicer/jobs/{job_id}")
+        if "error" in r:
+            return f"Couldn't get job status: {r['error']}"
+        status = r.get("status", "unknown")
+        lines = [f"Slice job {job_id}: {status}"]
+        if r.get("progress"):
+            lines.append(f"- Progress: {r['progress']}%")
+        if r.get("output"):
+            lines.append(f"- Output: {r['output']}")
+        if r.get("error"):
+            lines.append(f"- Error: {r['error']}")
+        return "\n".join(lines)
+
+    if name == "submit_slice_job":
+        model   = inputs["model"]
+        profile = inputs["profile"]
+        settings = inputs.get("settings")
+        async_mode = inputs.get("async_mode", True)
+        payload = {"model": model, "profile": profile, "async": async_mode}
+        if settings:
+            payload["settings"] = settings
+        r = _call_relay("POST", "/slicer/slice", payload)
+        if "error" in r:
+            db.log_task("printer", "slice_job", r["error"], "failed")
+            return f"Slice job failed: {r['error']}"
+        job_id = r.get("job_id") or r.get("id")
+        db.log_task("printer", "slice_job", f"model={model} profile={profile} job={job_id}", "success")
+        if job_id:
+            return f"✓ Slice job submitted. Job ID: {job_id}\nCheck progress: ask me to get slicer job status for {job_id}"
+        return f"✓ Slice job complete: {r}"
 
     return f"Unknown tool: {name}"

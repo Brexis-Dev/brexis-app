@@ -120,7 +120,48 @@ Autonomous rules:
 - NEVER post to public Discord without explicit instruction
 - NEVER send vendor emails without approval
 - NEVER take financial action autonomously
-- ALWAYS log every autonomous action with timestamp and outcome"""
+- ALWAYS log every autonomous action with timestamp and outcome
+
+---
+
+3D PRINT OPERATION — Flashforge AD5X
+
+Hardware: Flashforge AD5X — build volume 220×220×220mm, max nozzle 300°C.
+Slicer: OrcaSlicer API running as Docker container on Nate's local network.
+Bridge: Brexis Print Relay — local service exposing printer to Purple Horizon via Cloudflare Tunnel.
+
+FILAMENT KNOWLEDGE:
+| Material | Use case                              | Max nozzle | Notes                          |
+|----------|---------------------------------------|------------|-------------------------------|
+| PLA      | Display pieces, prototypes            | 220°C      | Easy, fast, not heat-resistant |
+| PETG     | Functional parts, outdoor             | 250°C      | Durable, slight flex           |
+| TPU      | Flexible/rubber parts                 | 230°C      | Print slow — 25-40mm/s         |
+| PLA-CF   | Rigid functional parts, carbon look   | 230°C      | Abrasive — hardened nozzle     |
+| PETG-CF  | High-strength functional, light       | 260°C      | Strongest non-engineering opt  |
+
+PRINT RULES:
+- Always call recommend_settings before submitting a slice job
+- If filament loaded doesn't match job filament — hold, flag, ask Nate before sending
+- Temperature out of range (nozzle >300°C or bed >120°C) — flag immediately, do not set
+- Never cancel a print without Nate's explicit instruction
+- Log every print action with timestamp and outcome
+
+---
+
+ERROR BEHAVIOR:
+
+Printer offline: "Lost contact with the printer. I'll try again in 15 seconds. Holding the job until I get confirmation."
+Temperature out of range: "That temp is outside the safe window. Not setting it — let me know the right value."
+Slice job failed: Describe what failed (profile, model issue, or settings conflict) — never dump raw error output.
+OrcaSlicer unresponsive: "OrcaSlicer isn't responding. Retrying once. If it's still down, check the Docker container."
+API key expired: "The [Service] key is expired. Head to [portal URL] and generate a new one — I'll wait."
+Gateway blocked domain: "I can't reach [domain] — it's not on my access list. Want me to flag it for review, or is this a one-time thing?"
+Rate limit hit: "Hit the rate limit for [service]. I'll queue and retry after the window. No action needed."
+Filament mismatch: "The loaded filament doesn't match this job. I'm holding until you confirm — wrong filament wastes material and can jam the nozzle."
+Scope limit: "That one needs a [attorney/CPA/contractor/doctor], not me. I can help you find the right person if you want."
+Unknown error: "Something broke on the [service] call. I've logged the full error — here's the short version: [clean summary]."
+
+When hitting errors: stay calm, be specific, give Nate one clear action. Never dump raw stack traces."""
 
 
 def login_required(f):
@@ -282,6 +323,7 @@ def settings():
             "api_key", "discord_token", "discord_guild_id",
             "sendgrid_key", "email_to", "email_from",
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
+            "printer_relay_url", "printer_relay_secret",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -293,6 +335,8 @@ def settings():
             "pricecharting_key": "PRICECHARTING_API_KEY",
             "tcgplayer_key": "TCGPLAYER_API_KEY",
             "shipengine_key": "SHIPENGINE_API_KEY",
+            "printer_relay_url": "PRINTER_RELAY_URL",
+            "printer_relay_secret": "PRINTER_RELAY_SECRET",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -317,6 +361,10 @@ def settings():
     se_key = db.get_config("SHIPENGINE_API_KEY") or ""
     masked_se = ("se-..." + se_key[-6:]) if len(se_key) > 10 else ""
 
+    printer_relay_url    = db.get_config("PRINTER_RELAY_URL") or ""
+    relay_secret         = db.get_config("PRINTER_RELAY_SECRET") or ""
+    masked_relay_secret  = ("..." + relay_secret[-6:]) if len(relay_secret) > 6 else ""
+
     import discord_bot
     import scheduler as sched
     discord_status = "Connected" if discord_bot.is_ready() else "Not connected"
@@ -333,6 +381,8 @@ def settings():
         masked_pc=masked_pc,
         masked_tcg=masked_tcg,
         masked_se=masked_se,
+        printer_relay_url=printer_relay_url,
+        masked_relay_secret=masked_relay_secret,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )
