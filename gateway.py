@@ -71,7 +71,8 @@ INJECTION_PATTERNS = [
     re.compile(r"disregard\s+(your|all|previous)", re.I),
 ]
 
-MAX_RESPONSE_SIZE = 50_000
+MAX_RESPONSE_SIZE = 50_000       # API responses
+MAX_SCRAPE_SIZE   = 500_000      # HTML scrape pages (eBay, PriceCharting)
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -203,7 +204,7 @@ def fetch_ebay_sold(title, platform="Switch"):
         _audit("REQUEST_SENT", f"eBay sold scrape: {title} / {platform}")
 
         resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=15)
-        raw = _size_check(resp.text)
+        raw = resp.text[:MAX_SCRAPE_SIZE]
         _scan_injection(raw)
 
         soup = BeautifulSoup(raw, "html.parser")
@@ -333,7 +334,7 @@ def _scrape_pc_page(url):
         domain = _allowlist_check(url)
         _rate_limit_check(domain)
         resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=12)
-        raw = _size_check(resp.text)
+        raw = resp.text[:MAX_SCRAPE_SIZE]
         _scan_injection(raw)
         soup = BeautifulSoup(raw, "html.parser")
 
