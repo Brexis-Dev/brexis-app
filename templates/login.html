@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Brexis — Purple Horizon</title>
+  <title>Brexis Embervex — Purple Horizon</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -12,77 +12,90 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%);
+      background: linear-gradient(135deg, #26215C 0%, #3C3489 60%, #26215C 100%);
     }
     .login-card {
-      background: white;
+      background: #EEEDFE;
       border-radius: 20px;
       padding: 48px 40px;
       width: 100%;
       max-width: 360px;
       text-align: center;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     }
-    .avatar {
-      width: 80px;
-      height: 80px;
-      background: linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #d4af37;
-      font-size: 2.2rem;
-      font-weight: 800;
-      margin: 0 auto 20px;
-      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    .emblem { margin: 0 auto 20px; display: block; }
+    h1 {
+      color: #3C3489;
+      font-size: 1.9rem;
+      font-weight: 500;
+      letter-spacing: -0.5px;
     }
-    h1 { color: #1e1b4b; font-size: 1.8rem; font-weight: 800; letter-spacing: 1px; }
-    .sub { color: #6b7280; font-size: 0.85rem; margin-top: 4px; margin-bottom: 32px; }
+    .sub {
+      color: #7F77DD;
+      font-size: 0.82rem;
+      margin-top: 4px;
+      margin-bottom: 32px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
     .pin-input {
       width: 100%;
       padding: 14px;
       font-size: 1.4rem;
       letter-spacing: 8px;
       text-align: center;
-      border: 2px solid #ede9fe;
+      border: 2px solid #7F77DD;
       border-radius: 12px;
       outline: none;
-      transition: border-color 0.2s;
+      background: white;
+      transition: border-color 0.2s, box-shadow 0.2s;
       font-family: monospace;
+      color: #26215C;
     }
-    .pin-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    .pin-input:focus { border-color: #3C3489; box-shadow: 0 0 0 3px rgba(60,52,137,0.15); }
     .btn-enter {
       width: 100%;
       margin-top: 16px;
       padding: 14px;
-      background: #7c3aed;
-      color: white;
+      background: #EF9F27;
+      color: #26215C;
       border: none;
       border-radius: 12px;
       font-size: 1rem;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       transition: background 0.2s;
       letter-spacing: 0.5px;
     }
-    .btn-enter:hover { background: #5b21b6; }
+    .btn-enter:hover { background: #FAC775; }
     .error {
       margin-top: 14px;
-      color: #dc2626;
+      color: #8B1A1A;
       font-size: 0.85rem;
       background: #fee2e2;
       padding: 8px 12px;
       border-radius: 8px;
     }
-    .platform { color: #9ca3af; font-size: 0.72rem; margin-top: 24px; letter-spacing: 0.5px; }
+    .platform {
+      color: #7F77DD;
+      font-size: 0.7rem;
+      margin-top: 24px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
   <div class="login-card">
-    <div class="avatar">B</div>
-    <h1>BREXIS</h1>
-    <div class="sub">Purple Horizon · Saturday Morning PJs</div>
+    <svg class="emblem" width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <rect width="80" height="80" rx="16" fill="#3C3489"/>
+      <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#7F77DD" stroke-width="1.5"/>
+      <path d="M40 56 C40 56 28 46 30 34 C31.5 26 36 22 38 28 C38.5 30 38 33 40 33 C42 33 43 28 45 26 C48 22 52 30 50 38 C48 46 40 56 40 56Z" fill="#EF9F27"/>
+      <path d="M40 50 C40 50 34 44 35 37 C35.5 33 38 31 39 34 C39.5 36 39 38 40 38 C41 38 41.5 35 43 33 C44.5 31 46 36 45 40 C44 45 40 50 40 50Z" fill="#FAC775"/>
+    </svg>
+    <h1>Brexis Embervex</h1>
+    <div class="sub">Intelligence · Protector · Ally</div>
     <form method="POST">
       <input
         class="pin-input"
@@ -98,7 +111,7 @@
       <div class="error">{{ error }}</div>
       {% endif %}
     </form>
-    <div class="platform">Business Intelligence Platform</div>
+    <div class="platform">Purple Horizon · Saturday Morning PJs</div>
   </div>
 </body>
 </html>
