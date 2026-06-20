@@ -171,8 +171,20 @@
       padding: 12px 16px; border-radius: 14px;
       font-size: 0.9rem; line-height: 1.7;
       max-width: calc(100% - 44px);
-      white-space: pre-wrap; word-break: break-word;
+      word-break: break-word;
     }
+    .msg-bubble a { color: var(--ember-glow); text-decoration: underline; }
+    .msg-bubble a:hover { color: var(--warm-flicker); }
+    .msg-bubble table { border-collapse: collapse; margin: 8px 0; font-size: 0.85rem; }
+    .msg-bubble th, .msg-bubble td { border: 1px solid rgba(0,0,0,0.1); padding: 5px 10px; text-align: left; }
+    .msg-bubble th { background: var(--ghost-light); font-weight: 600; }
+    .msg-bubble strong { font-weight: 700; }
+    .msg-bubble em { font-style: italic; }
+    .msg-bubble code { background: var(--ghost-light); border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 0.85em; }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin: 4px 0; }
+    .msg-bubble li { margin: 2px 0; }
+    .msg-bubble p { margin: 0 0 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
     .msg-row.assistant .msg-bubble {
       background: white; border: 1px solid var(--ghost-light); color: #1f2937;
       border-radius: 4px 14px 14px 14px;
@@ -431,9 +443,12 @@ async function send() {
           if (p.text) { bubble.textContent += p.text; scrollBottom(); }
           if (p.tool) { showToolIndicator(p.tool); }
           if (p.done) {
+            const raw = bubble.textContent;
+            bubble.innerHTML = parseMarkdown(raw);
             bubble.classList.remove('streaming');
             removeToolIndicators();
             updateSidebarTitle(currentSession, text);
+            scrollBottom();
           }
           if (p.error) {
             bubble.textContent = '⚠️ ' + p.error;
@@ -452,13 +467,63 @@ async function send() {
   document.getElementById('sendBtn').disabled = false;
 }
 
+function parseMarkdown(text) {
+  // Escape HTML first
+  let s = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Tables
+  s = s.replace(/^\|(.+)\|\s*\n\|[-| :]+\|\s*\n((?:\|.+\|\s*\n?)+)/gm, (_, header, rows) => {
+    const ths = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+    const trs = rows.trim().split('\n').map(row => {
+      const tds = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  });
+
+  // Code blocks
+  s = s.replace(/```[\s\S]*?```/g, m => `<code>${m.slice(3, -3).trim()}</code>`);
+
+  // Bold, italic, inline code
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Links [text](url)
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Unordered lists
+  s = s.replace(/((?:^- .+\n?)+)/gm, match => {
+    const items = match.trim().split('\n').map(l => `<li>${l.slice(2)}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+
+  // Ordered lists
+  s = s.replace(/((?:^\d+\. .+\n?)+)/gm, match => {
+    const items = match.trim().split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Paragraphs (split on double newlines)
+  s = s.split(/\n{2,}/).map(para => {
+    para = para.trim();
+    if (!para) return '';
+    if (para.startsWith('<')) return para; // already HTML
+    return `<p>${para.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+
+  return s;
+}
+
 function addBubble(role, content) {
   const row = document.createElement('div');
   row.className = `msg-row ${role}`;
   const av = role === 'assistant'
     ? '<div class="msg-av b">B</div>'
     : '<div class="msg-av u">N</div>';
-  row.innerHTML = `${av}<div class="msg-bubble">${esc(content)}</div>`;
+  const rendered = role === 'assistant' ? parseMarkdown(content) : esc(content);
+  row.innerHTML = `${av}<div class="msg-bubble">${rendered}</div>`;
   document.getElementById('messages').appendChild(row);
 }
 
