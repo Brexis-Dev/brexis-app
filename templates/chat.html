@@ -80,6 +80,19 @@
       padding: 12px 16px;
       border-top: 1px solid rgba(255,255,255,0.07);
     }
+    .sidebar-nav {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      justify-content: center;
+    }
+    .sidebar-nav a {
+      color: rgba(255,255,255,0.45); font-size: 0.72rem;
+      background: rgba(255,255,255,0.06); border-radius: 6px;
+      padding: 4px 10px; text-decoration: none; flex: 1; text-align: center;
+      transition: background 0.15s, color 0.15s;
+    }
+    .sidebar-nav a:hover { background: rgba(212,175,55,0.15); color: #d4af37; }
     .btn-logout {
       color: rgba(255,255,255,0.35); font-size: 0.75rem;
       background: none; border: none; cursor: pointer; text-decoration: none;
@@ -243,6 +256,11 @@
     </div>
 
     <div class="sidebar-footer">
+      <div class="sidebar-nav">
+        <a href="/settings">⚙ Settings</a>
+        <a href="/jobs">⏱ Jobs</a>
+        <a href="/logs">📋 Logs</a>
+      </div>
       <a href="/logout" class="btn-logout">Sign out</a>
     </div>
   </aside>
