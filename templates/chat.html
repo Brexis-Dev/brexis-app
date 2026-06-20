@@ -440,7 +440,15 @@ async function send() {
         if (!line.startsWith('data: ')) continue;
         try {
           const p = JSON.parse(line.slice(6));
-          if (p.text) { bubble.textContent += p.text; scrollBottom(); }
+          if (p.text) {
+            bubble.textContent += p.text;
+            // Eagerly render URLs as links during streaming
+            if (p.text.includes('http')) {
+              const raw = bubble.textContent;
+              bubble.innerHTML = raw.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+            }
+            scrollBottom();
+          }
           if (p.tool) { showToolIndicator(p.tool); }
           if (p.done) {
             const raw = bubble.textContent;

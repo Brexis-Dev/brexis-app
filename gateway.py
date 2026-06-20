@@ -181,6 +181,33 @@ _PC_PLATFORM_MAP = {
     "Genesis": "sega-genesis", "Dreamcast": "sega-dreamcast",
 }
 
+# Precise console name strings for API result filtering
+_PC_CONSOLE_MATCH = {
+    "NES":      "nintendo entertainment system",
+    "SNES":     "super nintendo",
+    "N64":      "nintendo 64",
+    "GameCube": "gamecube",
+    "Wii":      "nintendo wii",
+    "Wii U":    "wii u",
+    "Game Boy": "game boy",
+    "GBC":      "game boy color",
+    "GBA":      "game boy advance",
+    "DS":       "nintendo ds",
+    "3DS":      "nintendo 3ds",
+    "Switch":   "nintendo switch",
+    "PS1":      "playstation",
+    "PS2":      "playstation 2",
+    "PS3":      "playstation 3",
+    "PS4":      "playstation 4",
+    "PSP":      "psp",
+    "PS Vita":  "ps vita",
+    "Xbox":     "xbox",
+    "Xbox 360": "xbox 360",
+    "Xbox One": "xbox one",
+    "Genesis":  "sega genesis",
+    "Dreamcast":"sega dreamcast",
+}
+
 _SCRAPE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -220,78 +247,83 @@ def _cents(val):
 
 
 def fetch_pricecharting(title, platform="Switch"):
-    """Fetch PriceCharting prices — direct URL scrape first, API search as fallback."""
+    """Fetch PriceCharting prices via API search with precise platform filtering."""
     platform_slug = _PC_PLATFORM_MAP.get(platform, _slugify(platform))
-    title_slug = _slugify(title)
-    page_url = f"https://www.pricecharting.com/game/{platform_slug}/{title_slug}"
+    console_match = _PC_CONSOLE_MATCH.get(platform, platform.lower())
 
-    _audit("REQUEST_SENT", f"PriceCharting direct: {page_url}")
-
-    # Try direct URL first — most reliable
-    scraped = _scrape_pc_page(page_url)
-    if any(scraped.values()):
-        return {
-            "found":    True,
-            "name":     title,
-            "platform": platform,
-            "loose":    scraped.get("loose"),
-            "cib":      scraped.get("cib"),
-            "sealed":   scraped.get("sealed"),
-            "graded":   scraped.get("graded"),
-            "url":      page_url,
-        }
-
-    # Fallback: API search
     try:
         token = db.get_config("PRICECHARTING_API_KEY") or _PC_DEMO_TOKEN
         import json
-        query = requests.utils.quote(f"{title} {platform}")
+
+        # Strip platform prefix from title if user included it (e.g. "nes zelda" → "zelda")
+        clean_title = re.sub(rf"^{re.escape(platform.lower())}\s+", "", title.lower()).strip()
+        query = requests.utils.quote(clean_title)
         url = f"https://www.pricecharting.com/api/products?q={query}&t={token}"
+        _audit("REQUEST_SENT", f"PriceCharting search: '{clean_title}' on {platform}")
+
         _status, raw = _request(url)
         data = json.loads(raw)
         products = data.get("products", [])
 
-        # Only accept results that match the platform slug
-        matches = [p for p in products if platform_slug.replace("-", " ") in p.get("console-name", "").lower()]
-        if not matches:
-            return {"found": False, "error": f"No {platform} results found for '{title}' on PriceCharting"}
+        if not products:
+            return {"found": False, "error": f"No results found for '{title}' on PriceCharting"}
 
+        # Filter strictly to the requested platform using precise console name
+        matches = [
+            p for p in products
+            if console_match in p.get("console-name", "").lower()
+        ]
+
+        if not matches:
+            found_platforms = list({p.get("console-name", "") for p in products[:5]})
+            return {
+                "found": False,
+                "error": f"No {platform} results for '{title}'. Found on: {', '.join(found_platforms)}"
+            }
+
+        # Pick best title match within platform results
+        title_lower = clean_title.lower()
+        matches.sort(key=lambda p: sum(w in p.get("product-name","").lower() for w in title_lower.split()), reverse=True)
         best = matches[0]
+
+        # Fetch full price data
         pid = best.get("id")
+        price_data = best
         if pid:
             _s2, raw2 = _request(f"https://www.pricecharting.com/api/product?id={pid}&t={token}")
             d2 = json.loads(raw2)
             if d2.get("status") == "success":
-                best = d2
+                price_data = d2
 
-        loose  = _cents(best.get("loose-price"))
-        cib    = _cents(best.get("cib-price"))
-        sealed = _cents(best.get("new-price"))
-        graded = _cents(best.get("graded-price"))
+        loose  = _cents(price_data.get("loose-price"))
+        cib    = _cents(price_data.get("cib-price"))
+        sealed = _cents(price_data.get("new-price"))
+        graded = _cents(price_data.get("graded-price"))
 
-        slug_c = _slugify(best.get("console-name", platform))
-        slug_p = _slugify(best.get("product-name", title))
-        fallback_url = f"https://www.pricecharting.com/game/{slug_c}/{slug_p}"
+        slug_c = _slugify(price_data.get("console-name", platform))
+        slug_p = _slugify(price_data.get("product-name", title))
+        page_url = f"https://www.pricecharting.com/game/{slug_c}/{slug_p}"
 
+        # Scrape page if API didn't return prices (demo token limitation)
         if not any([loose, cib, sealed, graded]):
-            scraped2 = _scrape_pc_page(fallback_url)
-            loose  = scraped2.get("loose")  or loose
-            cib    = scraped2.get("cib")    or cib
-            sealed = scraped2.get("sealed") or sealed
-            graded = scraped2.get("graded") or graded
+            scraped = _scrape_pc_page(page_url)
+            loose  = scraped.get("loose")  or loose
+            cib    = scraped.get("cib")    or cib
+            sealed = scraped.get("sealed") or sealed
+            graded = scraped.get("graded") or graded
 
         return {
             "found":    True,
-            "name":     best.get("product-name", title),
-            "platform": best.get("console-name", platform),
+            "name":     price_data.get("product-name", title),
+            "platform": price_data.get("console-name", platform),
             "loose":    loose,
             "cib":      cib,
             "sealed":   sealed,
             "graded":   graded,
-            "url":      fallback_url,
+            "url":      page_url,
         }
     except Exception as e:
-        _audit("API_ERROR", f"PriceCharting fallback: {e}", "failed")
+        _audit("API_ERROR", f"PriceCharting: {e}", "failed")
         return {"found": False, "error": str(e)}
 
 
