@@ -65,6 +65,18 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "send_email",
+        "description": "Send an email via SendGrid. Use for test emails, one-off reports, or any message the owner asks to email.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Email subject line"},
+                "body": {"type": "string", "description": "Email body content"}
+            },
+            "required": ["subject", "body"]
+        }
+    },
+    {
         "name": "get_inventory_summary",
         "description": "Get a count of items across all Purple Horizon inventory categories for this user.",
         "input_schema": {
@@ -152,6 +164,49 @@ FEE_RATES = {
 
 
 def execute_tool(name, inputs, user_id):
+    if name == "send_email":
+        import emailer
+        subject = inputs.get("subject", "Message from Brexis")
+        body = inputs.get("body", "")
+        ok = emailer.send_email(subject, body)
+        return "✓ Email sent successfully." if ok else "✗ Email failed — check SendGrid credentials in /settings."
+
+    if name == "send_discord_message":
+        import discord_bot
+        channel = inputs.get("channel", "")
+        message = inputs.get("message", "")
+        pin = inputs.get("pin", False)
+        result = discord_bot.post_message(channel, message, pin=pin)
+        return result
+
+    if name == "setup_discord_channels":
+        import discord_bot
+        result = discord_bot.setup_channels()
+        return result
+
+    if name == "create_discord_channel":
+        import discord_bot
+        result = discord_bot.create_channel(
+            inputs["name"],
+            category_name=inputs.get("category"),
+            private=inputs.get("private", False)
+        )
+        return result
+
+    if name == "get_task_history":
+        limit = inputs.get("limit", 20)
+        entries = db.get_task_log(limit)
+        if not entries:
+            return "No task history yet."
+        lines = [f"[{e.get('created_at','')[:19]}] [{e.get('category','')}] {e.get('action','')} — {e.get('detail','')} ({e.get('status','')})" for e in entries]
+        return "\n".join(lines)
+
+    if name == "trigger_scheduled_job":
+        import scheduler as sched
+        job_id = inputs.get("job_id", "")
+        ok = sched.trigger_job(job_id)
+        return f"✓ Job '{job_id}' triggered." if ok else f"✗ Unknown job '{job_id}'."
+
     if name == "get_inventory_summary":
         summary = db.get_inventory_summary(user_id)
         total = sum(summary.values())
