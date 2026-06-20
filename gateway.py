@@ -22,7 +22,7 @@ ALLOWED_DOMAINS = {
     "www.ebay.com",           # eBay scraper (no API key — scrape workaround)
     "www.pricecharting.com",  # PriceCharting API + scraper fallback
     "api.tcgplayer.com",      # TCGPlayer API (Phase 1 — key required)
-    "api.shipengine.com",     # ShipEngine API (Phase 1 — key required)
+    "ssapi.shipstation.com",  # ShipStation API (Phase 1 — key required)
 }
 
 WRITE_PERMITTED = set()  # No external writes in Phase 1
@@ -42,7 +42,7 @@ TIMEOUTS = {
     "www.ebay.com":          15,
     "www.pricecharting.com": 12,
     "api.tcgplayer.com":     8,
-    "api.shipengine.com":    8,
+    "ssapi.shipstation.com": 8,
 }
 
 # ── Layer 2: Outbound sanitizer ─────────────────────────────────────────────
@@ -364,46 +364,47 @@ def fetch_tcgplayer(card_name, set_name=""):
 # ── Public API: ShipEngine ───────────────────────────────────────────────────
 
 def fetch_shipping_rates(from_zip, to_zip, weight_oz, length=12, width=9, height=4):
-    """Get shipping rate estimates from ShipEngine."""
+    """Get shipping rate estimates from ShipStation."""
     api_key = db.get_config("SHIPENGINE_API_KEY")
     if not api_key:
-        return {"found": False, "error": "ShipEngine API key not configured — add it in /settings"}
+        return {"found": False, "error": "ShipStation API key not configured — add it in /settings"}
 
     try:
-        import json
+        import json, base64
+        encoded = base64.b64encode(f"{api_key}:".encode()).decode()
         headers = {
-            "API-Key": api_key,
+            "Authorization": f"Basic {encoded}",
             "Content-Type": "application/json",
         }
         payload = {
-            "rate_options": {"carrier_ids": []},
-            "shipment": {
-                "ship_from": {"postal_code": from_zip, "country_code": "US"},
-                "ship_to":   {"postal_code": to_zip,   "country_code": "US"},
-                "packages": [{
-                    "weight": {"value": weight_oz, "unit": "ounce"},
-                    "dimensions": {"length": length, "width": width, "height": height, "unit": "inch"},
-                }],
-            },
+            "carrierCode": None,
+            "fromPostalCode": from_zip,
+            "toState": "MD",
+            "toCountry": "US",
+            "toPostalCode": to_zip,
+            "toCity": "",
+            "weight": {"value": weight_oz, "units": "ounces"},
+            "dimensions": {"length": length, "width": width, "height": height, "units": "inches"},
+            "confirmation": "none",
+            "residential": True,
         }
         _status, raw = _request(
-            "https://api.shipengine.com/v1/rates/estimate",
+            "https://ssapi.shipstation.com/shipments/getrates",
             method="POST",
             headers=headers,
             json=payload,
         )
         data = json.loads(raw)
         rates = []
-        for r in data if isinstance(data, list) else []:
-            if r.get("shipping_amount"):
-                rates.append({
-                    "carrier":  r.get("carrier_friendly_name", r.get("carrier_id")),
-                    "service":  r.get("service_type"),
-                    "rate":     r.get("shipping_amount", {}).get("amount"),
-                    "days":     r.get("delivery_days"),
-                })
+        for r in (data if isinstance(data, list) else []):
+            rates.append({
+                "carrier":  r.get("carrierCode", ""),
+                "service":  r.get("serviceCode", ""),
+                "rate":     r.get("shipmentCost", 0) + r.get("otherCost", 0),
+                "days":     r.get("transitDays"),
+            })
         rates.sort(key=lambda x: x.get("rate") or 999)
         return {"found": True, "rates": rates[:5]}
     except Exception as e:
-        _audit("API_ERROR", f"ShipEngine: {e}", "failed")
+        _audit("API_ERROR", f"ShipStation: {e}", "failed")
         return {"found": False, "error": str(e)}
