@@ -220,80 +220,78 @@ def _cents(val):
 
 
 def fetch_pricecharting(title, platform="Switch"):
-    """Fetch PriceCharting prices via API (falls back to scraper)."""
-    token = db.get_config("PRICECHARTING_API_KEY") or _PC_DEMO_TOKEN
-    query = requests.utils.quote(f"{title} {platform}")
-    url = f"https://www.pricecharting.com/api/products?q={query}&t={token}"
+    """Fetch PriceCharting prices — direct URL scrape first, API search as fallback."""
+    platform_slug = _PC_PLATFORM_MAP.get(platform, _slugify(platform))
+    title_slug = _slugify(title)
+    page_url = f"https://www.pricecharting.com/game/{platform_slug}/{title_slug}"
 
+    _audit("REQUEST_SENT", f"PriceCharting direct: {page_url}")
+
+    # Try direct URL first — most reliable
+    scraped = _scrape_pc_page(page_url)
+    if any(scraped.values()):
+        return {
+            "found":    True,
+            "name":     title,
+            "platform": platform,
+            "loose":    scraped.get("loose"),
+            "cib":      scraped.get("cib"),
+            "sealed":   scraped.get("sealed"),
+            "graded":   scraped.get("graded"),
+            "url":      page_url,
+        }
+
+    # Fallback: API search
     try:
-        _status, raw = _request(url)
+        token = db.get_config("PRICECHARTING_API_KEY") or _PC_DEMO_TOKEN
         import json
+        query = requests.utils.quote(f"{title} {platform}")
+        url = f"https://www.pricecharting.com/api/products?q={query}&t={token}"
+        _status, raw = _request(url)
         data = json.loads(raw)
-
-        if data.get("status") == "error":
-            return {"found": False, "error": data.get("error-message", "API error")}
-
         products = data.get("products", [])
-        if not products:
-            return {"found": False, "error": "No results found"}
 
-        platform_slug = _PC_PLATFORM_MAP.get(platform, platform).replace("-", " ").lower()
-        title_lower = title.lower()
+        # Only accept results that match the platform slug
+        matches = [p for p in products if platform_slug.replace("-", " ") in p.get("console-name", "").lower()]
+        if not matches:
+            return {"found": False, "error": f"No {platform} results found for '{title}' on PriceCharting"}
 
-        # Score each result — prioritize platform match, then title match
-        def score(p):
-            name_match = title_lower in p.get("product-name", "").lower()
-            plat_match = platform_slug in p.get("console-name", "").lower()
-            return (2 if plat_match else 0) + (1 if name_match else 0)
-
-        scored = sorted(products, key=score, reverse=True)
-        best = scored[0]
-
-        # If top result doesn't match the platform at all, return clear error
-        if platform_slug and platform_slug not in best.get("console-name", "").lower():
-            return {
-                "found": False,
-                "error": f"No {platform} match found for '{title}' on PriceCharting. "
-                         f"Closest result: {best.get('product-name')} ({best.get('console-name')})"
-            }
-
+        best = matches[0]
         pid = best.get("id")
-        price_data = best
         if pid:
-            url2 = f"https://www.pricecharting.com/api/product?id={pid}&t={token}"
-            _s2, raw2 = _request(url2)
+            _s2, raw2 = _request(f"https://www.pricecharting.com/api/product?id={pid}&t={token}")
             d2 = json.loads(raw2)
             if d2.get("status") == "success":
-                price_data = d2
+                best = d2
 
-        slug_console = _slugify(price_data.get("console-name", best.get("console-name", "")))
-        slug_product = _slugify(price_data.get("product-name", best.get("product-name", "")))
-        page_url = f"https://www.pricecharting.com/game/{slug_console}/{slug_product}"
+        loose  = _cents(best.get("loose-price"))
+        cib    = _cents(best.get("cib-price"))
+        sealed = _cents(best.get("new-price"))
+        graded = _cents(best.get("graded-price"))
 
-        loose  = _cents(price_data.get("loose-price"))
-        cib    = _cents(price_data.get("cib-price"))
-        sealed = _cents(price_data.get("new-price"))
-        graded = _cents(price_data.get("graded-price"))
+        slug_c = _slugify(best.get("console-name", platform))
+        slug_p = _slugify(best.get("product-name", title))
+        fallback_url = f"https://www.pricecharting.com/game/{slug_c}/{slug_p}"
 
         if not any([loose, cib, sealed, graded]):
-            scraped = _scrape_pc_page(page_url)
-            loose  = scraped.get("loose")  or loose
-            cib    = scraped.get("cib")    or cib
-            sealed = scraped.get("sealed") or sealed
-            graded = scraped.get("graded") or graded
+            scraped2 = _scrape_pc_page(fallback_url)
+            loose  = scraped2.get("loose")  or loose
+            cib    = scraped2.get("cib")    or cib
+            sealed = scraped2.get("sealed") or sealed
+            graded = scraped2.get("graded") or graded
 
         return {
             "found":    True,
-            "name":     price_data.get("product-name", best.get("product-name")),
-            "platform": price_data.get("console-name", best.get("console-name")),
+            "name":     best.get("product-name", title),
+            "platform": best.get("console-name", platform),
             "loose":    loose,
             "cib":      cib,
             "sealed":   sealed,
             "graded":   graded,
-            "url":      page_url,
+            "url":      fallback_url,
         }
     except Exception as e:
-        _audit("API_ERROR", f"PriceCharting: {e}", "failed")
+        _audit("API_ERROR", f"PriceCharting fallback: {e}", "failed")
         return {"found": False, "error": str(e)}
 
 
