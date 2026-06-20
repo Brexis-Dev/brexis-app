@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Logs — Brexis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f3ff; min-height: 100vh; }
+    .topbar { background: #1e1b4b; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { color: #d4af37; font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-decoration: none; }
+    .nav { display: flex; gap: 16px; }
+    .nav a { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
+    .nav a:hover { color: white; }
+    .container { max-width: 960px; margin: 40px auto; padding: 0 20px; }
+    .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    h1 { color: #1e1b4b; font-size: 1.3rem; }
+    .limit-select { background: white; border: 1.5px solid #ede9fe; border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; color: #374151; cursor: pointer; }
+    .card { background: white; border-radius: 14px; padding: 0; box-shadow: 0 1px 4px rgba(124,58,237,0.08); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead { background: #f5f3ff; }
+    th { text-align: left; color: #6b7280; font-weight: 600; padding: 12px 14px; border-bottom: 2px solid #ede9fe; }
+    td { padding: 10px 14px; border-bottom: 1px solid #f9fafb; color: #374151; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #faf9ff; }
+    .cat { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.73rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .cat-scheduler { background: #ede9fe; color: #5b21b6; }
+    .cat-discord { background: #dbeafe; color: #1d4ed8; }
+    .cat-email { background: #fef3c7; color: #92400e; }
+    .cat-default { background: #f3f4f6; color: #6b7280; }
+    .status-success { color: #059669; font-weight: 600; }
+    .status-failed { color: #dc2626; font-weight: 600; }
+    .status-running { color: #d97706; font-weight: 600; }
+    .detail { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { color: #9ca3af; font-size: 0.85rem; padding: 40px; text-align: center; }
+    .filter-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .filter-btn { background: white; border: 1.5px solid #ede9fe; border-radius: 20px; padding: 5px 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; color: #6b7280; transition: all 0.15s; }
+    .filter-btn.active, .filter-btn:hover { background: #7c3aed; color: white; border-color: #7c3aed; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/chat" class="brand">BREXIS</a>
+    <div class="nav">
+      <a href="/jobs">Jobs</a>
+      <a href="/settings">Settings</a>
+      <a href="/chat">← Chat</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="header-row">
+      <h1>Task Logs</h1>
+      <select class="limit-select" onchange="window.location='/logs?limit='+this.value">
+        <option value="50" {% if limit==50 %}selected{% endif %}>50 entries</option>
+        <option value="100" {% if limit==100 %}selected{% endif %}>100 entries</option>
+        <option value="250" {% if limit==250 %}selected{% endif %}>250 entries</option>
+      </select>
+    </div>
+
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterLogs('all', this)">All</button>
+      <button class="filter-btn" onclick="filterLogs('scheduler', this)">Scheduler</button>
+      <button class="filter-btn" onclick="filterLogs('discord', this)">Discord</button>
+      <button class="filter-btn" onclick="filterLogs('email', this)">Email</button>
+    </div>
+
+    <div class="card">
+      {% if logs %}
+      <table id="log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Category</th>
+            <th>Action</th>
+            <th>Detail</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr data-cat="{{ log.category }}">
+            <td style="white-space:nowrap;">{{ (log.created_at or '')[:16] }}</td>
+            <td>
+              <span class="cat cat-{{ log.category if log.category in ['scheduler','discord','email'] else 'default' }}">
+                {{ log.category }}
+              </span>
+            </td>
+            <td>{{ log.action }}</td>
+            <td class="detail" title="{{ log.detail }}">{{ log.detail }}</td>
+            <td class="status-{{ log.status }}">{{ log.status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No task history yet. Scheduled jobs and Brexis tool actions will appear here.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    function filterLogs(cat, btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('#log-table tbody tr').forEach(row => {
+        row.style.display = (cat === 'all' || row.dataset.cat === cat) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>

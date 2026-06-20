@@ -4,6 +4,67 @@ import database as db
 
 TOOL_DEFINITIONS = [
     {
+        "name": "send_discord_message",
+        "description": "Post a message to a Discord channel in the Saturday Morning PJs server. Use for announcements, alerts, listings, and reports.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Channel name without #, e.g. 'switch-listings', 'brexis-alerts', 'daily-briefing'"},
+                "message": {"type": "string", "description": "Message content to post"},
+                "pin": {"type": "boolean", "description": "Whether to pin the message after posting"}
+            },
+            "required": ["channel", "message"]
+        }
+    },
+    {
+        "name": "setup_discord_channels",
+        "description": "Set up the full Saturday Morning PJs Discord server channel structure including public and private categories.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "create_discord_channel",
+        "description": "Create a new Discord channel in the Saturday Morning PJs server.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Channel name (lowercase, hyphens)"},
+                "category": {"type": "string", "description": "Category name to place it under"},
+                "private": {"type": "boolean", "description": "Whether the channel should be private (owner only)"}
+            },
+            "required": ["name"]
+        }
+    },
+    {
+        "name": "get_task_history",
+        "description": "Get the recent task history log showing all autonomous actions Brexis has taken — Discord posts, emails, scheduled jobs.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Number of recent entries to return (default 20)"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "trigger_scheduled_job",
+        "description": "Manually trigger a scheduled job right now without waiting for its next scheduled time.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job to trigger",
+                    "enum": ["morning_briefing", "weekly_market_report", "deadline_alert", "low_inventory_alert"]
+                }
+            },
+            "required": ["job_id"]
+        }
+    },
+    {
         "name": "get_inventory_summary",
         "description": "Get a count of items across all Purple Horizon inventory categories for this user.",
         "input_schema": {
@@ -152,5 +213,53 @@ def execute_tool(name, inputs, user_id):
             f"- Net profit: ${net:.2f}\n"
             f"- ROI: {roi:.1f}%"
         )
+
+    if name == "send_discord_message":
+        import discord_bot
+        if not discord_bot.is_ready():
+            return "Discord bot is not connected. Check that DISCORD_BOT_TOKEN and DISCORD_GUILD_ID are set in /settings."
+        channel = inputs["channel"]
+        message = inputs["message"]
+        pin = inputs.get("pin", False)
+        result = discord_bot.post_message(channel, message, pin=pin)
+        db.log_task("discord", "post_message", f"#{channel}: {message[:80]}", "success" if "Posted" in result or "✓" in result else "failed")
+        return result
+
+    if name == "setup_discord_channels":
+        import discord_bot
+        if not discord_bot.is_ready():
+            return "Discord bot is not connected. Check that DISCORD_BOT_TOKEN and DISCORD_GUILD_ID are set in /settings."
+        result = discord_bot.setup_channels()
+        db.log_task("discord", "setup_channels", result[:120], "success")
+        return result
+
+    if name == "create_discord_channel":
+        import discord_bot
+        if not discord_bot.is_ready():
+            return "Discord bot is not connected."
+        result = discord_bot.create_channel(
+            name=inputs["name"],
+            category_name=inputs.get("category"),
+            private=inputs.get("private", False),
+        )
+        db.log_task("discord", "create_channel", f"#{inputs['name']}", "success")
+        return result
+
+    if name == "get_task_history":
+        limit = inputs.get("limit", 20)
+        logs = db.get_task_log(limit)
+        if not logs:
+            return "No task history found yet."
+        lines = [f"[{r.get('created_at','')[:16]}] [{r.get('category','')}] {r.get('action','')} — {r.get('detail','')} ({r.get('status','')})" for r in logs]
+        return f"Recent task history ({len(logs)} entries):\n" + "\n".join(lines)
+
+    if name == "trigger_scheduled_job":
+        import scheduler
+        job_id = inputs["job_id"]
+        ok = scheduler.trigger_job(job_id)
+        if ok:
+            db.log_task("scheduler", "manual_trigger", f"Triggered: {job_id}", "success")
+            return f"✓ Triggered job '{job_id}' — it is running in the background now."
+        return f"Unknown job '{job_id}'."
 
     return f"Unknown tool: {name}"

@@ -95,7 +95,43 @@ def init_db():
             content    TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS task_log (
+            id         {auto},
+            category   TEXT NOT NULL,
+            action     TEXT NOT NULL,
+            detail     TEXT,
+            status     TEXT DEFAULT 'success',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def log_task(category, action, detail="", status="success"):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO task_log (category, action, detail, status) VALUES ({p},{p},{p},{p})",
+            (category, action, detail, status)
+        )
+        conn.commit()
+    except Exception as e:
+        pass
+    finally:
+        conn.close()
+
+
+def get_task_log(limit=50):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM task_log ORDER BY created_at DESC LIMIT %s" % limit if _is_postgres(os.environ.get("DATABASE_URL","")) else f"SELECT * FROM task_log ORDER BY created_at DESC LIMIT {limit}")
+        return [row(r) for r in cur.fetchall()]
+    except Exception:
+        return []
     finally:
         conn.close()
 

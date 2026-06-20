@@ -9,13 +9,15 @@
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f3ff; min-height: 100vh; }
     .topbar { background: #1e1b4b; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
     .brand { color: #d4af37; font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-decoration: none; }
-    .back { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
-    .back:hover { color: white; }
-    .container { max-width: 540px; margin: 40px auto; padding: 0 20px; }
-    .card { background: white; border-radius: 14px; padding: 28px; box-shadow: 0 1px 4px rgba(124,58,237,0.08); }
+    .nav { display: flex; gap: 16px; }
+    .nav a { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
+    .nav a:hover { color: white; }
+    .container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    .card { background: white; border-radius: 14px; padding: 28px; box-shadow: 0 1px 4px rgba(124,58,237,0.08); margin-bottom: 20px; }
     h1 { color: #1e1b4b; font-size: 1.3rem; margin-bottom: 4px; }
+    h2 { color: #1e1b4b; font-size: 1rem; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #ede9fe; }
     .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 24px; }
-    .form-group { margin-bottom: 20px; }
+    .form-group { margin-bottom: 18px; }
     label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
     input[type=text], input[type=password] {
       width: 100%; padding: 10px 12px; border: 1.5px solid #ede9fe;
@@ -27,34 +29,90 @@
     .btn:hover { background: #5b21b6; }
     .success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 20px; }
     .current { background: #f5f3ff; border: 1px solid #ede9fe; border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; color: #6b7280; margin-top: 6px; font-family: monospace; }
+    .status-row { display: flex; gap: 16px; margin-bottom: 20px; }
+    .status-badge { flex: 1; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; text-align: center; }
+    .status-ok { background: #d1fae5; color: #065f46; }
+    .status-off { background: #fef3c7; color: #92400e; }
   </style>
 </head>
 <body>
   <div class="topbar">
     <a href="/chat" class="brand">BREXIS</a>
-    <a href="/chat" class="back">← Back to chat</a>
+    <div class="nav">
+      <a href="/jobs">Jobs</a>
+      <a href="/logs">Logs</a>
+      <a href="/chat">← Chat</a>
+    </div>
   </div>
   <div class="container">
-    <div class="card">
-      <h1>Settings</h1>
-      <div class="sub">Configure Brexis API access</div>
 
-      {% if saved %}
-      <div class="success">✓ Settings saved successfully.</div>
-      {% endif %}
+    {% if saved %}
+    <div class="success" style="border-radius:10px;padding:12px 16px;margin-bottom:16px;">✓ Settings saved successfully.</div>
+    {% endif %}
 
-      <form method="POST">
-        <div class="form-group">
-          <label>Anthropic API Key</label>
-          <input type="password" name="api_key" placeholder="sk-ant-api03-..." autocomplete="off">
-          {% if masked %}
-          <div class="current">Current: {{ masked }}</div>
-          {% endif %}
-          <div class="hint">Your key from console.anthropic.com — stored securely in the database.</div>
-        </div>
-        <button class="btn" type="submit">Save Settings</button>
-      </form>
+    <div class="status-row">
+      <div class="status-badge {{ 'status-ok' if discord_status == 'Connected' else 'status-off' }}">
+        Discord: {{ discord_status }}
+      </div>
+      <div class="status-badge {{ 'status-ok' if scheduler_status == 'Running' else 'status-off' }}">
+        Scheduler: {{ scheduler_status }}
+      </div>
     </div>
+
+    <form method="POST">
+
+      <div class="card">
+        <h2>Anthropic API</h2>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" name="api_key" placeholder="sk-ant-api03-..." autocomplete="off">
+          {% if masked_key %}
+          <div class="current">Current: {{ masked_key }}</div>
+          {% endif %}
+          <div class="hint">From console.anthropic.com — stored securely in the database.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Discord Integration</h2>
+        <div class="form-group">
+          <label>Bot Token</label>
+          <input type="password" name="discord_token" placeholder="Paste Discord bot token..." autocomplete="off">
+          {% if masked_discord %}
+          <div class="current">Current: {{ masked_discord }}</div>
+          {% endif %}
+          <div class="hint">From Discord Developer Portal → Your App → Bot → Token.</div>
+        </div>
+        <div class="form-group">
+          <label>Guild ID (Server ID)</label>
+          <input type="text" name="discord_guild_id" value="{{ discord_guild }}" placeholder="e.g. 1517719205808443523">
+          <div class="hint">Right-click your server in Discord → Copy Server ID (Developer Mode must be on).</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Email (SendGrid)</h2>
+        <div class="form-group">
+          <label>SendGrid API Key</label>
+          <input type="password" name="sendgrid_key" placeholder="SG.xxxx..." autocomplete="off">
+          {% if masked_sg %}
+          <div class="current">Current: {{ masked_sg }}</div>
+          {% endif %}
+          <div class="hint">From app.sendgrid.com → Settings → API Keys.</div>
+        </div>
+        <div class="form-group">
+          <label>Send Emails To</label>
+          <input type="text" name="email_to" value="{{ email_to }}" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label>Send Emails From</label>
+          <input type="text" name="email_from" value="{{ email_from }}" placeholder="brexis@yourdomain.com">
+          <div class="hint">Must be a verified sender in your SendGrid account.</div>
+        </div>
+      </div>
+
+      <button class="btn" type="submit">Save All Settings</button>
+    </form>
   </div>
 </body>
 </html>

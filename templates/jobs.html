@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jobs — Brexis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f3ff; min-height: 100vh; }
+    .topbar { background: #1e1b4b; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { color: #d4af37; font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-decoration: none; }
+    .nav { display: flex; gap: 16px; }
+    .nav a { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
+    .nav a:hover { color: white; }
+    .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    .card { background: white; border-radius: 14px; padding: 24px; box-shadow: 0 1px 4px rgba(124,58,237,0.08); margin-bottom: 20px; }
+    h1 { color: #1e1b4b; font-size: 1.3rem; margin-bottom: 4px; }
+    h2 { color: #1e1b4b; font-size: 1rem; margin-bottom: 16px; }
+    .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 28px; }
+    .job-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #f3f4f6; }
+    .job-row:last-child { border-bottom: none; }
+    .job-name { font-weight: 600; color: #1f2937; font-size: 0.9rem; }
+    .job-next { color: #6b7280; font-size: 0.8rem; margin-top: 3px; }
+    .trigger-btn { background: #7c3aed; color: white; border: none; border-radius: 7px; padding: 7px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+    .trigger-btn:hover { background: #5b21b6; }
+    .trigger-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #1e1b4b; color: white; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; display: none; z-index: 999; }
+    .discord-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-left: 10px; }
+    .badge-ok { background: #d1fae5; color: #065f46; }
+    .badge-off { background: #fef3c7; color: #92400e; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; color: #6b7280; font-weight: 600; padding: 8px 10px; border-bottom: 2px solid #f3f4f6; }
+    td { padding: 8px 10px; border-bottom: 1px solid #f9fafb; color: #374151; }
+    .status-success { color: #059669; font-weight: 600; }
+    .status-failed { color: #dc2626; font-weight: 600; }
+    .status-running { color: #d97706; font-weight: 600; }
+    .empty { color: #9ca3af; font-size: 0.85rem; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/chat" class="brand">BREXIS</a>
+    <div class="nav">
+      <a href="/settings">Settings</a>
+      <a href="/logs">Logs</a>
+      <a href="/chat">← Chat</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Scheduled Jobs
+      <span class="discord-badge {{ 'badge-ok' if discord_ready else 'badge-off' }}">
+        Discord {{ 'Connected' if discord_ready else 'Offline' }}
+      </span>
+    </h1>
+    <div class="sub">Manage Brexis autonomous tasks. Trigger any job manually or let the scheduler run on its timetable.</div>
+
+    <div class="card">
+      <h2>Active Jobs</h2>
+      {% if jobs %}
+      {% for job in jobs %}
+      <div class="job-row">
+        <div>
+          <div class="job-name">{{ job.name }}</div>
+          <div class="job-next">Next run: {{ job.next_run }}</div>
+        </div>
+        <button class="trigger-btn" onclick="triggerJob('{{ job.id }}', this)">Run Now</button>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty">Scheduler is not running. Check Settings — ensure the app is deployed with a single worker.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Recent Activity</h2>
+      {% if logs %}
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Category</th>
+            <th>Action</th>
+            <th>Detail</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td>{{ (log.created_at or '')[:16] }}</td>
+            <td>{{ log.category }}</td>
+            <td>{{ log.action }}</td>
+            <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.detail }}</td>
+            <td class="status-{{ log.status }}">{{ log.status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No activity logged yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function triggerJob(jobId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      fetch(`/jobs/trigger/${jobId}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          showToast(data.ok ? `✓ ${jobId} triggered` : 'Failed to trigger job');
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Run Now'; }, 3000);
+        })
+        .catch(() => { btn.disabled = false; btn.textContent = 'Run Now'; });
+    }
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => t.style.display = 'none', 3000);
+    }
+  </script>
+</body>
+</html>
