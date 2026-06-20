@@ -191,71 +191,14 @@ _SCRAPE_HEADERS = {
 
 
 def fetch_ebay_sold(title, platform="Switch"):
-    """Scrape eBay completed/sold listings. Returns avg, low, high, count."""
+    """Return a direct eBay sold listings search URL for the given title and platform."""
     query = requests.utils.quote(f"{title} {platform}")
     url = (
         f"https://www.ebay.com/sch/i.html?_nkw={query}"
         "&LH_Sold=1&LH_Complete=1&LH_ItemCondition=3000&_sop=13"
     )
-    try:
-        domain = _allowlist_check(url)
-        _rate_limit_check(domain)
-        _permission_check(domain, "GET")
-        _audit("REQUEST_SENT", f"eBay sold scrape: {title} / {platform}")
-
-        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=15)
-        raw = resp.text[:MAX_SCRAPE_SIZE]
-        _scan_injection(raw)
-
-        soup = BeautifulSoup(raw, "html.parser")
-
-        # Try primary selector, then fallbacks for eBay layout changes
-        price_tags = soup.select(".s-item__price")
-        if not price_tags:
-            price_tags = soup.select("[class*='item__price']")
-        if not price_tags:
-            price_tags = soup.select(".srp-results .s-item span.BOLD")
-
-        # Log what we got for debugging
-        page_title = soup.title.string if soup.title else "no title"
-        _audit("RESPONSE_RECEIVED", f"eBay page='{page_title[:80]}' price_tags={len(price_tags)} page_size={len(raw)}")
-
-        prices = []
-        for tag in price_tags:
-            text = tag.get_text(" ", strip=True)
-            nums = re.findall(r"\d+\.\d{2}", text)
-            if len(nums) == 2:
-                prices.append((float(nums[0]) + float(nums[1])) / 2)
-            elif len(nums) == 1:
-                prices.append(float(nums[0]))
-
-        if len(prices) >= 4:
-            prices.sort()
-            q1, q3 = prices[len(prices) // 4], prices[(3 * len(prices)) // 4]
-            iqr = q3 - q1
-            prices = [p for p in prices if q1 - 1.5 * iqr <= p <= q3 + 1.5 * iqr]
-
-        if not prices:
-            return {
-                "found": False,
-                "error": f"No sold prices found on eBay (page: '{page_title[:60]}', tags found: {len(price_tags)})",
-                "search_url": url,
-            }
-
-        _audit("RESPONSE_RECEIVED", f"eBay: {len(prices)} prices, avg=${round(sum(prices)/len(prices),2)}")
-        return {
-            "found": True,
-            "avg":   round(sum(prices) / len(prices), 2),
-            "low":   round(min(prices), 2),
-            "high":  round(max(prices), 2),
-            "count": len(prices),
-            "search_url": url,
-        }
-    except (PermissionError, RuntimeError) as e:
-        return {"found": False, "error": str(e)}
-    except Exception as e:
-        _audit("API_ERROR", str(e), "failed")
-        return {"found": False, "error": str(e)}
+    _audit("REQUEST_SENT", f"eBay link generated: {title} / {platform}")
+    return {"found": True, "search_url": url}
 
 
 # ── Public API: PriceCharting ────────────────────────────────────────────────

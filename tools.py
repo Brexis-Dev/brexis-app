@@ -219,14 +219,9 @@ def execute_tool(name, inputs, user_id):
     if name == "fetch_ebay_sold":
         import gateway
         r = gateway.fetch_ebay_sold(inputs["title"], inputs.get("platform", "Switch"))
-        if not r["found"]:
-            return f"eBay lookup failed: {r['error']}"
         return (
-            f"eBay sold listings — {inputs['title']} ({inputs.get('platform','Switch')}):\n"
-            f"- Average: ${r['avg']}\n"
-            f"- Low: ${r['low']} | High: ${r['high']}\n"
-            f"- Based on {r['count']} sold listings\n"
-            f"- Search: {r.get('search_url','')}"
+            f"eBay sold listings for {inputs['title']} ({inputs.get('platform','Switch')}):\n"
+            f"{r['search_url']}"
         )
 
     if name == "fetch_pricecharting":
