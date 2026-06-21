@@ -58,6 +58,7 @@ def send_email(subject, body, to_emails=None, from_email=None):
             subject=subject,
             html_content=body.replace("\n", "<br>") if "<" not in body else body,
         )
+        logger.info(f"Sending email FROM={from_email} TO={to_emails} SUBJECT={subject!r}")
         response = sg.send(mail)
         status = response.status_code
         success = status in (200, 201, 202)
