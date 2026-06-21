@@ -103,6 +103,103 @@ def init_db():
             status     TEXT DEFAULT 'success',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        # ── Inventory tables ──
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS games (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            title          TEXT NOT NULL,
+            platform       TEXT,
+            condition      TEXT DEFAULT 'Good',
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS cards (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            name           TEXT NOT NULL,
+            set_name       TEXT,
+            condition      TEXT DEFAULT 'NM',
+            grade          TEXT,
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS figures (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            name           TEXT NOT NULL,
+            brand          TEXT,
+            series         TEXT,
+            condition      TEXT DEFAULT 'Good',
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS comics (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            title          TEXT NOT NULL,
+            publisher      TEXT,
+            issue          TEXT,
+            condition      TEXT DEFAULT 'Good',
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS apparel (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            name           TEXT NOT NULL,
+            brand          TEXT,
+            size           TEXT,
+            condition      TEXT DEFAULT 'New',
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS shoes (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            name           TEXT NOT NULL,
+            brand          TEXT,
+            size           TEXT,
+            condition      TEXT DEFAULT 'New',
+            status         TEXT DEFAULT 'have',
+            purchase_price REAL DEFAULT 0,
+            sold_for       REAL,
+            sold_platform  TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS lrg_games (
+            id             {auto},
+            user_id        INTEGER NOT NULL,
+            title          TEXT NOT NULL,
+            publisher      TEXT DEFAULT 'Limited Run Games',
+            status         TEXT DEFAULT 'watching',
+            buy_price      REAL DEFAULT 0,
+            est_resale     REAL DEFAULT 0,
+            sold_for       REAL,
+            deadline       TEXT,
+            notes          TEXT,
+            added_at       TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
         conn.commit()
     finally:
         conn.close()
@@ -304,6 +401,115 @@ def search_inventory(user_id, query):
     finally:
         conn.close()
     return results
+
+
+# ── Inventory writes ──────────────────────────────────────────────────────────
+
+_INVENTORY_TABLES = {"games", "cards", "figures", "comics", "apparel", "shoes"}
+
+_ALLOWED_FIELDS = {
+    "games":   {"title", "platform", "condition", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+    "cards":   {"name", "set_name", "condition", "grade", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+    "figures": {"name", "brand", "series", "condition", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+    "comics":  {"title", "publisher", "issue", "condition", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+    "apparel": {"name", "brand", "size", "condition", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+    "shoes":   {"name", "brand", "size", "condition", "status", "purchase_price", "sold_for", "sold_platform", "notes"},
+}
+
+
+def add_inventory_item(user_id, category, fields):
+    if category not in _INVENTORY_TABLES:
+        return {"error": f"Unknown category '{category}'. Options: {', '.join(_INVENTORY_TABLES)}"}
+    allowed = _ALLOWED_FIELDS[category]
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    if not clean:
+        return {"error": "No valid fields provided."}
+    clean["user_id"] = user_id
+    p = ph()
+    cols = ", ".join(clean.keys())
+    placeholders = ", ".join([p] * len(clean))
+    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
+    pg = _is_postgres(url)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"INSERT INTO {category} ({cols}) VALUES ({placeholders})", list(clean.values()))
+        conn.commit()
+        if pg:
+            cur.execute("SELECT lastval()")
+            return {"id": cur.fetchone()[0]}
+        return {"id": cur.lastrowid}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def update_inventory_item(user_id, category, item_id, fields):
+    if category not in _INVENTORY_TABLES:
+        return {"error": f"Unknown category '{category}'."}
+    allowed = _ALLOWED_FIELDS[category]
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    if not clean:
+        return {"error": "No valid fields to update."}
+    p = ph()
+    set_clause = ", ".join(f"{k}={p}" for k in clean.keys())
+    values = list(clean.values()) + [item_id, user_id]
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE {category} SET {set_clause} WHERE id={p} AND user_id={p}", values)
+        conn.commit()
+        return {"updated": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def mark_item_sold(user_id, category, item_id, sold_for, sold_platform=None):
+    if category == "lrg_games":
+        fields = {"status": "sold", "sold_for": sold_for}
+    elif category in _INVENTORY_TABLES:
+        fields = {"status": "sold", "sold_for": sold_for}
+        if sold_platform:
+            fields["sold_platform"] = sold_platform
+    else:
+        return {"error": f"Unknown category '{category}'."}
+    return update_inventory_item(user_id, category, item_id, fields) if category != "lrg_games" else _mark_lrg_sold(user_id, item_id, sold_for, sold_platform)
+
+
+def _mark_lrg_sold(user_id, item_id, sold_for, sold_platform=None):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE lrg_games SET status={p}, sold_for={p} WHERE id={p} AND user_id={p}",
+            ("sold", sold_for, item_id, user_id)
+        )
+        conn.commit()
+        return {"updated": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def remove_inventory_item(user_id, category, item_id):
+    if category not in _INVENTORY_TABLES and category != "lrg_games":
+        return {"error": f"Unknown category '{category}'."}
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM {category} WHERE id={p} AND user_id={p}", (item_id, user_id))
+        conn.commit()
+        return {"deleted": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
 
 
 def add_lrg_game(user_id, title, publisher="Limited Run Games", status="watching",

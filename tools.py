@@ -342,6 +342,80 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "add_inventory_item",
+        "description": "Add a new item to Purple Horizon inventory. Use for games, cards, figures, comics, apparel, or shoes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["games", "cards", "figures", "comics", "apparel", "shoes"],
+                    "description": "Inventory category"
+                },
+                "fields": {
+                    "type": "object",
+                    "description": "Item fields. games/comics: title, platform/publisher, condition, purchase_price, notes. cards: name, set_name, condition, grade, purchase_price. figures: name, brand, series, condition, purchase_price. apparel/shoes: name, brand, size, condition, purchase_price."
+                }
+            },
+            "required": ["category", "fields"]
+        }
+    },
+    {
+        "name": "update_inventory_item",
+        "description": "Update fields on an existing inventory item by ID and category.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["games", "cards", "figures", "comics", "apparel", "shoes", "lrg_games"],
+                    "description": "Inventory category"
+                },
+                "item_id": {"type": "integer", "description": "ID of the item to update"},
+                "fields": {"type": "object", "description": "Fields to update and their new values"}
+            },
+            "required": ["category", "item_id", "fields"]
+        }
+    },
+    {
+        "name": "mark_item_sold",
+        "description": "Mark an inventory item as sold. Updates status to sold and records the sale price and platform.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["games", "cards", "figures", "comics", "apparel", "shoes", "lrg_games"],
+                    "description": "Inventory category"
+                },
+                "item_id": {"type": "integer", "description": "ID of the item that sold"},
+                "sold_for": {"type": "number", "description": "Sale price in USD"},
+                "sold_platform": {
+                    "type": "string",
+                    "enum": ["ebay", "mercari", "facebook", "reddit", "direct", "other"],
+                    "description": "Platform where item was sold"
+                }
+            },
+            "required": ["category", "item_id", "sold_for"]
+        }
+    },
+    {
+        "name": "remove_inventory_item",
+        "description": "Permanently delete an inventory item by ID. Use with caution — this cannot be undone. Always confirm with Nate before removing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["games", "cards", "figures", "comics", "apparel", "shoes", "lrg_games"],
+                    "description": "Inventory category"
+                },
+                "item_id": {"type": "integer", "description": "ID of the item to remove"}
+            },
+            "required": ["category", "item_id"]
+        }
+    },
+    {
         "name": "generate_design",
         "description": (
             "Generate a functional 3D model using OpenSCAD. Use for tools, jigs, enclosures, brackets, "
@@ -733,6 +807,57 @@ def execute_tool(name, inputs, user_id):
         if r.get("error"):
             lines.append(f"- Error: {r['error']}")
         return "\n".join(lines)
+
+    if name == "add_inventory_item":
+        category = inputs["category"]
+        fields   = inputs.get("fields", {})
+        result   = db.add_inventory_item(user_id, category, fields)
+        if "error" in result:
+            db.log_task("inventory", "add_item", result["error"], "failed")
+            return f"Failed to add item: {result['error']}"
+        name_val = fields.get("title") or fields.get("name") or "item"
+        db.log_task("inventory", "add_item", f"[{category}] {name_val} → id={result['id']}", "success")
+        return f"✓ Added '{name_val}' to {category} inventory (ID: {result['id']})."
+
+    if name == "update_inventory_item":
+        category = inputs["category"]
+        item_id  = inputs["item_id"]
+        fields   = inputs.get("fields", {})
+        result   = db.update_inventory_item(user_id, category, item_id, fields)
+        if "error" in result:
+            db.log_task("inventory", "update_item", result["error"], "failed")
+            return f"Failed to update item: {result['error']}"
+        if not result.get("updated"):
+            return f"No item found in {category} with ID {item_id}."
+        db.log_task("inventory", "update_item", f"[{category}] id={item_id} fields={list(fields.keys())}", "success")
+        return f"✓ Updated {category} item {item_id}."
+
+    if name == "mark_item_sold":
+        category      = inputs["category"]
+        item_id       = inputs["item_id"]
+        sold_for      = inputs["sold_for"]
+        sold_platform = inputs.get("sold_platform")
+        result = db.mark_item_sold(user_id, category, item_id, sold_for, sold_platform)
+        if "error" in result:
+            db.log_task("inventory", "mark_sold", result["error"], "failed")
+            return f"Failed to mark as sold: {result['error']}"
+        if not result.get("updated"):
+            return f"No item found in {category} with ID {item_id}."
+        platform_str = f" on {sold_platform}" if sold_platform else ""
+        db.log_task("inventory", "mark_sold", f"[{category}] id={item_id} sold=${sold_for}{platform_str}", "success")
+        return f"✓ Marked {category} item {item_id} as sold for ${sold_for:.2f}{platform_str}."
+
+    if name == "remove_inventory_item":
+        category = inputs["category"]
+        item_id  = inputs["item_id"]
+        result   = db.remove_inventory_item(user_id, category, item_id)
+        if "error" in result:
+            db.log_task("inventory", "remove_item", result["error"], "failed")
+            return f"Failed to remove item: {result['error']}"
+        if not result.get("deleted"):
+            return f"No item found in {category} with ID {item_id}."
+        db.log_task("inventory", "remove_item", f"[{category}] id={item_id}", "success")
+        return f"✓ Removed {category} item {item_id} from inventory."
 
     if name == "generate_design":
         code        = inputs["code"]
