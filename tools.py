@@ -321,19 +321,24 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "submit_slice_job",
-        "description": "Send a model file to OrcaSlicer for slicing. Returns a job ID to track progress.",
+        "description": "Slice an STL file using PrusaSlicer with AD5X profiles. Returns the gcode path when done.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "model": {"type": "string", "description": "Path to the .STL or .3MF file on the local relay machine"},
-                "profile": {"type": "string", "description": "OrcaSlicer profile name to use"},
-                "settings": {
-                    "type": "object",
-                    "description": "Optional overrides: nozzle_temp, bed_temp, layer_height, infill_density, speed_mm_s"
+                "model": {"type": "string", "description": "Path to the .STL file on the local relay machine"},
+                "filament": {
+                    "type": "string",
+                    "enum": ["PLA", "PETG", "TPU", "PLA-CF", "PETG-CF"],
+                    "description": "Filament material to slice for"
                 },
-                "async_mode": {"type": "boolean", "description": "True to return immediately with job ID, False to wait for completion"}
+                "goal": {
+                    "type": "string",
+                    "enum": ["balanced", "strength", "fast"],
+                    "description": "Print priority — balanced (default), strength (40% infill, slow), fast (10% infill, 0.25mm layers)"
+                },
+                "supports": {"type": "boolean", "description": "Enable auto supports (default false)"}
             },
-            "required": ["model", "profile"]
+            "required": ["model", "filament"]
         }
     },
     {
@@ -783,21 +788,23 @@ def execute_tool(name, inputs, user_id):
         return f"Print started — {r.get('filename', gcode_path)} is now printing on the AD5X."
 
     if name == "submit_slice_job":
-        model   = inputs["model"]
-        profile = inputs["profile"]
-        settings = inputs.get("settings")
-        async_mode = inputs.get("async_mode", True)
-        payload = {"model": model, "profile": profile, "async": async_mode}
-        if settings:
-            payload["settings"] = settings
+        model    = inputs["model"]
+        filament = inputs.get("filament", "PLA")
+        goal     = inputs.get("goal", "balanced")
+        supports = inputs.get("supports", False)
+        payload  = {"model": model, "filament": filament, "goal": goal, "supports": supports}
         r = _call_relay("POST", "/slicer/slice", payload)
         if "error" in r:
             db.log_task("printer", "slice_job", r["error"], "failed")
-            return f"Slice job failed: {r['error']}"
-        job_id = r.get("job_id") or r.get("id")
-        db.log_task("printer", "slice_job", f"model={model} profile={profile} job={job_id}", "success")
-        if job_id:
-            return f"✓ Slice job submitted. Job ID: {job_id}\nCheck progress: ask me to get slicer job status for {job_id}"
-        return f"✓ Slice job complete: {r}"
+            return f"Slice failed: {r['error']}"
+        gcode = r.get("gcode_path", "")
+        db.log_task("printer", "slice_job", f"model={model} filament={filament} goal={goal} → {gcode}", "success")
+        return (
+            f"Sliced successfully.\n"
+            f"- Gcode: {gcode}\n"
+            f"- Size: {r.get('size_kb', '?')}KB\n"
+            f"- Filament: {filament} | Goal: {goal}\n"
+            f"Ready to print. Call send_to_printer with gcode_path={gcode}"
+        )
 
     return f"Unknown tool: {name}"
