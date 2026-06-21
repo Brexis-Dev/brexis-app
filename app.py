@@ -360,6 +360,16 @@ def health():
     return "OK", 200
 
 
+@app.route("/about")
+def landing():
+    return render_template("landing.html")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy_policy.html")
+
+
 @app.route("/", methods=["GET", "POST"])
 def login():
     if session.get("authenticated"):

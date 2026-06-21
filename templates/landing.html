@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Saturday Morning PJs — Purple Horizon operational platform. Collectibles, apparel, and fabrication."/>
+  <title>Saturday Morning PJs — Purple Horizon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --deep-ember:   #3C3489;
+      --vex-light:    #7F77DD;
+      --ember-glow:   #EF9F27;
+      --shadow-core:  #26215C;
+      --ghost-light:  #EEEDFE;
+      --ink:          #1a1640;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--ink);
+      color: var(--ghost-light);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(60,52,137,0.35) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0 24px;
+      border-bottom: 0.5px solid rgba(127,119,221,0.2);
+      margin-bottom: 80px;
+    }
+
+    .nav-mark {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-wordmark {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--ghost-light);
+    }
+
+    .nav-sub {
+      font-size: 11px;
+      color: var(--vex-light);
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    .nav-link {
+      font-size: 13px;
+      color: rgba(238,237,254,0.5);
+      text-decoration: none;
+    }
+
+    .nav-link:hover { color: var(--ghost-light); }
+
+    .hero {
+      text-align: center;
+      padding: 40px 0 64px;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ember-glow);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 58px;
+      font-weight: 500;
+      color: var(--ghost-light);
+      line-height: 1.05;
+      margin-bottom: 24px;
+    }
+
+    .hero-sub {
+      font-size: 17px;
+      line-height: 1.7;
+      color: rgba(238,237,254,0.6);
+      max-width: 520px;
+      margin: 0 auto 40px;
+    }
+
+    .pill {
+      display: inline-block;
+      background: rgba(60,52,137,0.4);
+      border: 0.5px solid rgba(127,119,221,0.3);
+      border-radius: 100px;
+      padding: 8px 20px;
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--vex-light);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 64px;
+    }
+
+    .card {
+      background: rgba(38,33,92,0.35);
+      border: 0.5px solid rgba(127,119,221,0.15);
+      border-radius: 16px;
+      padding: 28px 24px;
+    }
+
+    .card-icon {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    .card h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--ghost-light);
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 13px;
+      line-height: 1.7;
+      color: rgba(238,237,254,0.5);
+    }
+
+    .integrations {
+      text-align: center;
+      padding: 48px 0;
+      border-top: 0.5px solid rgba(127,119,221,0.1);
+      border-bottom: 0.5px solid rgba(127,119,221,0.1);
+      margin-bottom: 64px;
+    }
+
+    .integrations h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--ghost-light);
+      margin-bottom: 8px;
+    }
+
+    .integrations p {
+      font-size: 14px;
+      color: rgba(238,237,254,0.45);
+      margin-bottom: 28px;
+    }
+
+    .int-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .int-tag {
+      background: rgba(60,52,137,0.3);
+      border: 0.5px solid rgba(127,119,221,0.2);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: rgba(238,237,254,0.6);
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-top: 32px;
+      border-top: 0.5px solid rgba(127,119,221,0.12);
+    }
+
+    .footer-left {
+      font-size: 12px;
+      color: rgba(238,237,254,0.35);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .footer-links a {
+      font-size: 12px;
+      color: rgba(238,237,254,0.4);
+      text-decoration: none;
+    }
+
+    .footer-links a:hover { color: var(--vex-light); }
+
+    .footer-motto {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 13px;
+      font-style: italic;
+      color: var(--vex-light);
+      opacity: 0.6;
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 40px; }
+      .cards { grid-template-columns: 1fr; }
+      footer { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <nav>
+    <a class="nav-mark" href="/about">
+      <svg width="32" height="32" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="80" height="80" rx="16" fill="#3C3489"/>
+        <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#7F77DD" stroke-width="1.5"/>
+        <path d="M40 56 C40 56 28 46 30 34 C31.5 26 36 22 38 28 C38.5 30 38 33 40 33 C42 33 43 28 45 26 C48 22 52 30 50 38 C48 46 40 56 40 56Z" fill="#EF9F27"/>
+        <path d="M40 50 C40 50 34 44 35 37 C35.5 33 38 31 39 34 C39.5 36 39 38 40 38 C41 38 41.5 35 43 33 C44.5 31 46 36 45 40 C44 45 40 50 40 50Z" fill="#FAC775"/>
+      </svg>
+      <div>
+        <div class="nav-wordmark">Saturday Morning PJs</div>
+        <div class="nav-sub">Purple Horizon</div>
+      </div>
+    </a>
+    <a class="nav-link" href="/privacy">Privacy Policy</a>
+  </nav>
+
+  <div class="hero">
+    <div class="eyebrow">Saturday Morning PJs</div>
+    <h1>Purple Horizon</h1>
+    <p class="hero-sub">
+      An operational platform for collectibles, apparel, and fabrication —
+      built to manage inventory, monitor markets, and run the business.
+    </p>
+    <span class="pill">Calvert County, Maryland</span>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon">🎮</div>
+      <h3>Collectibles</h3>
+      <p>Video games, trading cards, comics, and limited-run items — tracked, priced, and monitored across resale markets.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">👕</div>
+      <h3>Apparel</h3>
+      <p>The Saturday Morning PJs apparel brand — designed, produced, and sold via Etsy, Pinterest, and direct channels.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🖨️</div>
+      <h3>Fabrication</h3>
+      <p>3D printing and custom fabrication for prototypes, products, and one-off commissions.</p>
+    </div>
+  </div>
+
+  <div class="integrations">
+    <h2>Platform Integrations</h2>
+    <p>Purple Horizon connects to external platforms for market data, commerce, and operations.</p>
+    <div class="int-list">
+      <span class="int-tag">Pinterest</span>
+      <span class="int-tag">Etsy</span>
+      <span class="int-tag">eBay</span>
+      <span class="int-tag">SendGrid</span>
+      <span class="int-tag">Discord</span>
+      <span class="int-tag">PriceCharting</span>
+      <span class="int-tag">Brave Search</span>
+      <span class="int-tag">Railway</span>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-left">© 2026 Saturday Morning PJs · Calvert County, Maryland</div>
+    <div class="footer-links">
+      <a href="/privacy">Privacy Policy</a>
+    </div>
+    <div class="footer-motto">By ember and eagle, we hold.</div>
+  </footer>
+
+</div>
+
+</body>
+</html>
