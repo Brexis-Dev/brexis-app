@@ -489,7 +489,7 @@ def settings():
             "sendgrid_key", "email_to", "email_from",
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
             "printer_relay_url", "printer_relay_secret",
-            "brave_search_key",
+            "brave_search_key", "claude_code_token",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -504,6 +504,7 @@ def settings():
             "printer_relay_url": "PRINTER_RELAY_URL",
             "printer_relay_secret": "PRINTER_RELAY_SECRET",
             "brave_search_key": "BRAVE_SEARCH_API_KEY",
+            "claude_code_token": "CLAUDE_CODE_API_TOKEN",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -533,6 +534,8 @@ def settings():
     masked_relay_secret  = ("..." + relay_secret[-6:]) if len(relay_secret) > 6 else ""
     brave_key            = db.get_config("BRAVE_SEARCH_API_KEY") or ""
     masked_brave         = ("BSA-..." + brave_key[-6:]) if len(brave_key) > 10 else ""
+    cc_token             = db.get_config("CLAUDE_CODE_API_TOKEN") or ""
+    masked_cc_token      = ("..." + cc_token[-6:]) if len(cc_token) > 6 else ""
 
     import discord_bot
     import scheduler as sched
@@ -553,9 +556,70 @@ def settings():
         printer_relay_url=printer_relay_url,
         masked_relay_secret=masked_relay_secret,
         masked_brave=masked_brave,
+        masked_cc_token=masked_cc_token,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )
+
+
+def _check_claude_token():
+    """Verify Bearer token for Claude Code API endpoints."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    stored = db.get_config("CLAUDE_CODE_API_TOKEN")
+    return stored and token == stored
+
+
+@app.route("/api/code-tasks/pending", methods=["GET"])
+def api_code_tasks_pending():
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    tasks = db.get_code_tasks(status="queued")
+    db.log_task("claude_code", "fetch_pending", f"{len(tasks)} tasks returned", "success")
+    return jsonify({"tasks": tasks})
+
+
+@app.route("/api/code-tasks/<int:task_id>/result", methods=["POST"])
+def api_code_task_result(task_id):
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(force=True) or {}
+    completion_report = data.get("completion_report", "")
+    files_changed     = data.get("files_changed", "")
+    dependencies_added = data.get("dependencies_added", "none")
+    notes             = data.get("notes", "")
+
+    conn = db.get_db()
+    try:
+        cur = conn.cursor()
+        p = db.ph()
+        cur.execute(
+            f"UPDATE code_tasks SET status={p}, completion_report={p}, files_changed={p}, "
+            f"dependencies_added={p}, notes={p}, completed_at=CURRENT_TIMESTAMP WHERE id={p}",
+            ("review", completion_report, files_changed, dependencies_added, notes, task_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.log_task("claude_code", "result_posted", f"TASK-{task_id:04d} ready for Brexis review", "success")
+
+    # Notify Brexis via Discord
+    try:
+        import discord_bot
+        if discord_bot.is_ready():
+            discord_bot.post_message(
+                "brexis-alerts",
+                f"**TASK-{task_id:04d} complete** — Claude Code has posted results. Ready for your review.\n"
+                f"Files changed: {files_changed or 'see report'}\n"
+                f"/tasks/code to review."
+            )
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "task_id": task_id, "status": "review"})
 
 
 @app.route("/tasks/code")

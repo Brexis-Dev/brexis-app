@@ -168,6 +168,18 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Claude Code Integration</h2>
+        <div class="form-group">
+          <label>Claude Code API Token</label>
+          <input type="password" name="claude_code_token" placeholder="Paste token..." autocomplete="off">
+          {% if masked_cc_token %}
+          <div class="current">Current: {{ masked_cc_token }}</div>
+          {% endif %}
+          <div class="hint">Shared secret between Purple Horizon and Claude Code. Generate any strong random string and paste the same value into Claude Code's memory.</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit">Save All Settings</button>
     </form>
   </div>
