@@ -24,6 +24,8 @@ ALLOWED_DOMAINS = {
     "api.tcgplayer.com",         # TCGPlayer API (Phase 1 — key required)
     "ssapi.shipstation.com",     # ShipStation API (Phase 1 — key required)
     "api.search.brave.com",      # Brave Search API
+    "openapi.etsy.com",          # Etsy API v3 (read-only)
+    "api.pinterest.com",         # Pinterest API v5 (read-only)
 }
 
 WRITE_PERMITTED = set()  # No external writes in Phase 1
@@ -36,6 +38,8 @@ RATE_LIMITS = {
     "api.tcgplayer.com":      {"max": 15, "window": 60},
     "api.shipengine.com":     {"max": 10, "window": 60},
     "api.search.brave.com":   {"max": 20, "window": 60},
+    "openapi.etsy.com":       {"max": 10, "window": 60},
+    "api.pinterest.com":      {"max": 10, "window": 60},
 }
 
 _call_counts: dict = {}
@@ -46,6 +50,8 @@ TIMEOUTS = {
     "api.tcgplayer.com":     8,
     "ssapi.shipstation.com": 8,
     "api.search.brave.com":  8,
+    "openapi.etsy.com":      10,
+    "api.pinterest.com":     10,
 }
 
 # ── Layer 2: Outbound sanitizer ─────────────────────────────────────────────
@@ -488,4 +494,137 @@ def brave_search(query, count=5):
         return {"found": True, "query": query, "results": results}
     except Exception as e:
         _audit("API_ERROR", f"BraveSearch: {e}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+# ── Public API: Etsy v3 ──────────────────────────────────────────────────────
+
+def etsy_search(query, limit=10):
+    """Search active Etsy listings by keyword. Returns title, price, shop, url."""
+    api_key = db.get_config("ETSY_API_KEY")
+    if not api_key:
+        return {"found": False, "error": "Etsy API key not configured — add it in /settings"}
+    try:
+        import json
+        url = "https://openapi.etsy.com/v3/application/listings/active"
+        headers = {"x-api-key": api_key, "Accept": "application/json"}
+        params = {"keywords": query, "limit": min(int(limit), 25), "includes": ["Shop"]}
+        _status, raw = _request(url, headers=headers, params=params)
+        data = json.loads(raw)
+        results = []
+        for item in data.get("results", []):
+            price = item.get("price", {})
+            amount = price.get("amount", 0)
+            divisor = price.get("divisor", 100)
+            results.append({
+                "title":     item.get("title", ""),
+                "price":     round(amount / divisor, 2) if divisor else 0,
+                "currency":  price.get("currency_code", "USD"),
+                "shop":      item.get("shop", {}).get("shop_name", "") if item.get("shop") else "",
+                "url":       item.get("url", ""),
+                "status":    item.get("state", ""),
+                "listing_id": item.get("listing_id"),
+            })
+        if not results:
+            return {"found": False, "error": f"No Etsy listings found for '{query}'"}
+        _audit("ETSY_SEARCH", f"query='{query}' count={len(results)}")
+        return {
+            "found":   True,
+            "query":   query,
+            "count":   data.get("count", len(results)),
+            "results": results,
+        }
+    except Exception as e:
+        _audit("API_ERROR", f"Etsy search: {e}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+def etsy_shop(shop_name, limit=10):
+    """Fetch active listings for a specific Etsy shop by shop name."""
+    api_key = db.get_config("ETSY_API_KEY")
+    if not api_key:
+        return {"found": False, "error": "Etsy API key not configured — add it in /settings"}
+    try:
+        import json
+        # First resolve shop_id from shop_name
+        shop_url = f"https://openapi.etsy.com/v3/application/shops"
+        headers = {"x-api-key": api_key, "Accept": "application/json"}
+        _s, raw = _request(shop_url, headers=headers, params={"shop_name": shop_name})
+        shop_data = json.loads(raw)
+        shops = shop_data.get("results", [])
+        if not shops:
+            return {"found": False, "error": f"No Etsy shop found named '{shop_name}'"}
+        shop = shops[0]
+        shop_id = shop.get("shop_id")
+        listings_url = f"https://openapi.etsy.com/v3/application/shops/{shop_id}/listings/active"
+        _s2, raw2 = _request(listings_url, headers=headers, params={"limit": min(int(limit), 25)})
+        data = json.loads(raw2)
+        results = []
+        for item in data.get("results", []):
+            price = item.get("price", {})
+            amount = price.get("amount", 0)
+            divisor = price.get("divisor", 100)
+            results.append({
+                "title":      item.get("title", ""),
+                "price":      round(amount / divisor, 2) if divisor else 0,
+                "currency":   price.get("currency_code", "USD"),
+                "url":        item.get("url", ""),
+                "status":     item.get("state", ""),
+                "listing_id": item.get("listing_id"),
+            })
+        _audit("ETSY_SHOP", f"shop='{shop_name}' listings={len(results)}")
+        return {
+            "found":     True,
+            "shop_name": shop.get("shop_name", shop_name),
+            "shop_id":   shop_id,
+            "total":     data.get("count", len(results)),
+            "listings":  results,
+        }
+    except Exception as e:
+        _audit("API_ERROR", f"Etsy shop: {e}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+# ── Public API: Pinterest v5 ─────────────────────────────────────────────────
+
+def pinterest_search(query, limit=10):
+    """Search Pinterest pins by keyword. Returns title, description, image url, link."""
+    access_token = db.get_config("PINTEREST_ACCESS_TOKEN")
+    if not access_token:
+        return {"found": False, "error": "Pinterest access token not configured — add it in /settings"}
+    try:
+        import json
+        url = "https://api.pinterest.com/v5/search/pins"
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+        params = {"query": query, "page_size": min(int(limit), 25)}
+        _status, raw = _request(url, headers=headers, params=params)
+        data = json.loads(raw)
+        results = []
+        for item in data.get("items", []):
+            media = item.get("media", {})
+            images = media.get("images", {})
+            image_url = (
+                images.get("600x", {}).get("url") or
+                images.get("400x300", {}).get("url") or ""
+            )
+            results.append({
+                "title":       item.get("title", ""),
+                "description": item.get("description", ""),
+                "link":        item.get("link", ""),
+                "image_url":   image_url,
+                "board":       item.get("board_id", ""),
+                "pin_id":      item.get("id", ""),
+            })
+        if not results:
+            return {"found": False, "error": f"No Pinterest pins found for '{query}'"}
+        bookmark = data.get("bookmark")
+        _audit("PINTEREST_SEARCH", f"query='{query}' count={len(results)}")
+        return {
+            "found":    True,
+            "query":    query,
+            "results":  results,
+            "bookmark": bookmark,
+        }
+    except Exception as e:
+        _audit("API_ERROR", f"Pinterest search: {e}", "failed")
         return {"found": False, "error": str(e)}

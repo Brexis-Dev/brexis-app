@@ -301,6 +301,13 @@ Still log the task. Still review before anything ships.
 
 ---
 
+ETSY & PINTEREST:
+Use etsy_search to search active Etsy listings by keyword — pricing research, competitor listings, trend data.
+Use etsy_shop to pull all active listings from a specific shop by name.
+Use pinterest_search to search pins by keyword — trend research, product inspiration, apparel ideas.
+Saturday Morning PJs will be selling apparel on Etsy — monitor pricing, trends, and competitors proactively.
+API keys are stored in /settings (ETSY_API_KEY, PINTEREST_ACCESS_TOKEN).
+
 TEAM CONTACTS:
 Purple Horizon maintains a contacts database of key personnel. Use get_contacts to look up team members by name, role, or company. This eliminates the need to ask Nate for email addresses or roles each session.
 
@@ -502,6 +509,7 @@ def settings():
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
             "printer_relay_url", "printer_relay_secret",
             "brave_search_key", "claude_code_token",
+            "etsy_api_key", "pinterest_access_token",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -517,6 +525,8 @@ def settings():
             "printer_relay_secret": "PRINTER_RELAY_SECRET",
             "brave_search_key": "BRAVE_SEARCH_API_KEY",
             "claude_code_token": "CLAUDE_CODE_API_TOKEN",
+            "etsy_api_key": "ETSY_API_KEY",
+            "pinterest_access_token": "PINTEREST_ACCESS_TOKEN",
         }
         for field in fields:
             val = request.form.get(field, "").strip()

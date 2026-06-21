@@ -363,6 +363,42 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "etsy_search",
+        "description": "Search active Etsy listings by keyword. Use for pricing research, competitor listings, trend spotting, or finding products similar to Saturday Morning PJs apparel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword to search Etsy listings"},
+                "limit": {"type": "integer", "description": "Number of results to return (default 10, max 25)"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "etsy_shop",
+        "description": "Fetch active listings for a specific Etsy shop by shop name. Use to monitor a competitor shop or check Saturday Morning PJs own shop inventory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "shop_name": {"type": "string", "description": "Etsy shop name (as it appears in the shop URL)"},
+                "limit": {"type": "integer", "description": "Number of listings to return (default 10, max 25)"}
+            },
+            "required": ["shop_name"]
+        }
+    },
+    {
+        "name": "pinterest_search",
+        "description": "Search Pinterest pins by keyword. Use for trend research, product inspiration, and market research — especially for the apparel brand.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword to search Pinterest pins"},
+                "limit": {"type": "integer", "description": "Number of results to return (default 10, max 25)"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "create_task",
         "description": "Create a new task in Brexis's project tracking system. Use when Nate mentions something that needs to get done, follow up on, or track.",
         "input_schema": {
@@ -1014,6 +1050,55 @@ def execute_tool(name, inputs, user_id):
             lines.append(f"   {res.get('url','')}")
             if res.get("description"):
                 lines.append(f"   {res['description'][:200]}")
+        return "\n".join(lines)
+
+    if name == "etsy_search":
+        import gateway
+        query = inputs["query"]
+        limit = min(inputs.get("limit", 10), 25)
+        r = gateway.etsy_search(query, limit)
+        if not r.get("found"):
+            return f"Etsy search failed: {r.get('error', 'unknown error')}"
+        db.log_task("etsy", "search", query, "success")
+        lines = [f"Etsy listings for '{query}' ({r.get('count', 0)} total, showing {len(r['results'])}):\n"]
+        for item in r["results"]:
+            shop = f" | {item['shop']}" if item.get("shop") else ""
+            lines.append(f"• {item['title']}")
+            lines.append(f"  ${item['price']} {item['currency']}{shop}")
+            lines.append(f"  {item['url']}")
+        return "\n".join(lines)
+
+    if name == "etsy_shop":
+        import gateway
+        shop_name = inputs["shop_name"]
+        limit = min(inputs.get("limit", 10), 25)
+        r = gateway.etsy_shop(shop_name, limit)
+        if not r.get("found"):
+            return f"Etsy shop lookup failed: {r.get('error', 'unknown error')}"
+        db.log_task("etsy", "shop", shop_name, "success")
+        lines = [f"Etsy shop: {r['shop_name']} ({r['total']} active listings, showing {len(r['listings'])}):\n"]
+        for item in r["listings"]:
+            lines.append(f"• {item['title']} — ${item['price']} {item['currency']}")
+            lines.append(f"  {item['url']}")
+        return "\n".join(lines)
+
+    if name == "pinterest_search":
+        import gateway
+        query = inputs["query"]
+        limit = min(inputs.get("limit", 10), 25)
+        r = gateway.pinterest_search(query, limit)
+        if not r.get("found"):
+            return f"Pinterest search failed: {r.get('error', 'unknown error')}"
+        db.log_task("pinterest", "search", query, "success")
+        lines = [f"Pinterest pins for '{query}' ({len(r['results'])} results):\n"]
+        for item in r["results"]:
+            lines.append(f"• {item['title'] or '(no title)'}")
+            if item.get("description"):
+                lines.append(f"  {item['description'][:150]}")
+            if item.get("link"):
+                lines.append(f"  Link: {item['link']}")
+            if item.get("image_url"):
+                lines.append(f"  Image: {item['image_url']}")
         return "\n".join(lines)
 
     if name == "create_task":
