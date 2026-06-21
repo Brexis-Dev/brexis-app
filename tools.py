@@ -1263,11 +1263,14 @@ def execute_tool(name, inputs, user_id):
 
     if name == "send_to_printer":
         gcode_path = inputs["gcode_path"]
+        print(f"[tools] send_to_printer called with gcode_path={gcode_path!r}", flush=True)
         r = _call_relay("POST", "/printer/start", {"gcode_path": gcode_path})
+        print(f"[tools] send_to_printer relay response: {r}", flush=True)
         if not r.get("ok"):
-            db.log_task("fabrication", "send_to_printer", r.get("error", "failed"), "failed")
-            return f"Failed to start print: {r.get('error', 'unknown error')}"
-        db.log_task("fabrication", "send_to_printer", f"Started: {r.get('filename','')}", "success")
+            error = r.get("error", "unknown error")
+            db.log_task("fabrication", "send_to_printer", f"FAILED path={gcode_path}: {error}", "failed")
+            return f"Failed to start print: {error}\n\nGcode path used: {gcode_path}"
+        db.log_task("fabrication", "send_to_printer", f"Started: {r.get('filename','')} from {gcode_path}", "success")
         return f"Print started — {r.get('filename', gcode_path)} is now printing on the AD5X."
 
     if name == "create_code_task":
