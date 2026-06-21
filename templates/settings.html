@@ -156,6 +156,18 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Web Search — Brave Search API</h2>
+        <div class="form-group">
+          <label>Brave Search API Key</label>
+          <input type="password" name="brave_search_key" placeholder="BSA-..." autocomplete="off">
+          {% if masked_brave %}
+          <div class="current">Current: {{ masked_brave }}</div>
+          {% endif %}
+          <div class="hint">From api.search.brave.com — enables Brexis to search the web for pricing, releases, and market data.</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit">Save All Settings</button>
     </form>
   </div>
