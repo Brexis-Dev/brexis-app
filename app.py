@@ -453,6 +453,8 @@ def send():
                         full_response += block.text
                         yield f"data: {json.dumps({'text': block.text})}\n\n"
 
+                print(f"[chat] stop_reason={response.stop_reason} blocks={[b.type for b in response.content]}", flush=True)
+
                 if response.stop_reason == "end_turn":
                     break
 
