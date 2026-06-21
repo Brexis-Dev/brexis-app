@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 # ── Layer 1: Allowlist ──────────────────────────────────────────────────────
 
 ALLOWED_DOMAINS = {
-    "www.ebay.com",           # eBay scraper (no API key — scrape workaround)
-    "www.pricecharting.com",  # PriceCharting API + scraper fallback
-    "api.tcgplayer.com",      # TCGPlayer API (Phase 1 — key required)
-    "ssapi.shipstation.com",  # ShipStation API (Phase 1 — key required)
+    "www.ebay.com",              # eBay scraper (no API key — scrape workaround)
+    "www.pricecharting.com",     # PriceCharting API + scraper fallback
+    "api.tcgplayer.com",         # TCGPlayer API (Phase 1 — key required)
+    "ssapi.shipstation.com",     # ShipStation API (Phase 1 — key required)
+    "api.search.brave.com",      # Brave Search API
 }
 
 WRITE_PERMITTED = set()  # No external writes in Phase 1
@@ -34,6 +35,7 @@ RATE_LIMITS = {
     "www.pricecharting.com":  {"max": 10, "window": 60},
     "api.tcgplayer.com":      {"max": 15, "window": 60},
     "api.shipengine.com":     {"max": 10, "window": 60},
+    "api.search.brave.com":   {"max": 20, "window": 60},
 }
 
 _call_counts: dict = {}
@@ -43,6 +45,7 @@ TIMEOUTS = {
     "www.pricecharting.com": 12,
     "api.tcgplayer.com":     8,
     "ssapi.shipstation.com": 8,
+    "api.search.brave.com":  8,
 }
 
 # ── Layer 2: Outbound sanitizer ─────────────────────────────────────────────
@@ -447,4 +450,42 @@ def fetch_shipping_rates(from_zip, to_zip, weight_oz, length=12, width=9, height
         return {"found": True, "rates": rates[:5]}
     except Exception as e:
         _audit("API_ERROR", f"ShipStation: {e}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+# ── Public API: Brave Search ─────────────────────────────────────────────────
+
+def brave_search(query, count=5):
+    """Search the web via Brave Search API. Returns list of result dicts."""
+    api_key = db.get_config("BRAVE_SEARCH_API_KEY")
+    if not api_key:
+        return {"found": False, "error": "Brave Search API key not configured — add it in /settings"}
+
+    try:
+        import json
+        url = "https://api.search.brave.com/res/v1/web/search"
+        headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": api_key,
+        }
+        params = {"q": query, "count": min(int(count), 10), "safesearch": "moderate"}
+        _status, raw = _request(url, headers=headers, params=params)
+        data = json.loads(raw)
+
+        results = []
+        for item in data.get("web", {}).get("results", []):
+            results.append({
+                "title":       item.get("title", ""),
+                "url":         item.get("url", ""),
+                "description": item.get("description", ""),
+            })
+
+        if not results:
+            return {"found": False, "error": f"No web results for '{query}'"}
+
+        _audit("BRAVE_SEARCH", f"query='{query}' count={len(results)}")
+        return {"found": True, "query": query, "results": results}
+    except Exception as e:
+        _audit("API_ERROR", f"BraveSearch: {e}", "failed")
         return {"found": False, "error": str(e)}

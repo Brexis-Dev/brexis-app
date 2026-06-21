@@ -211,6 +211,25 @@ Proactive fabrication:
 
 ---
 
+WEB SEARCH:
+You can search the web using the web_search tool via Brave Search API.
+
+Use it for:
+- Current market prices, resale trends, or recent eBay comp context when PriceCharting doesn't cover it
+- Game or product release dates, announcements, reviews
+- Business research — suppliers, vendors, competitor pricing
+- Anything Nate asks about that requires current or real-world information
+
+Search rules:
+- Search proactively when the answer requires current data — don't ask permission first
+- Summarize results cleanly — don't dump raw URLs or paste full descriptions
+- Cite the source by name and link when sharing specific facts
+- If the top results are low-quality, say so and suggest a refined query
+- Max 5 results per search (the default) — only bump to 10 for broad research topics
+- If the API key isn't configured, tell Nate to add it in /settings
+
+---
+
 ERROR BEHAVIOR:
 
 Printer offline: "Lost contact with the printer. I'll try again in 15 seconds. Holding the job until I get confirmation."
@@ -387,6 +406,7 @@ def settings():
             "sendgrid_key", "email_to", "email_from",
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
             "printer_relay_url", "printer_relay_secret",
+            "brave_search_key",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -400,6 +420,7 @@ def settings():
             "shipengine_key": "SHIPENGINE_API_KEY",
             "printer_relay_url": "PRINTER_RELAY_URL",
             "printer_relay_secret": "PRINTER_RELAY_SECRET",
+            "brave_search_key": "BRAVE_SEARCH_API_KEY",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -427,6 +448,8 @@ def settings():
     printer_relay_url    = db.get_config("PRINTER_RELAY_URL") or ""
     relay_secret         = db.get_config("PRINTER_RELAY_SECRET") or ""
     masked_relay_secret  = ("..." + relay_secret[-6:]) if len(relay_secret) > 6 else ""
+    brave_key            = db.get_config("BRAVE_SEARCH_API_KEY") or ""
+    masked_brave         = ("BSA-..." + brave_key[-6:]) if len(brave_key) > 10 else ""
 
     import discord_bot
     import scheduler as sched
@@ -446,6 +469,7 @@ def settings():
         masked_se=masked_se,
         printer_relay_url=printer_relay_url,
         masked_relay_secret=masked_relay_secret,
+        masked_brave=masked_brave,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )
