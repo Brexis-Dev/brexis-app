@@ -213,6 +213,28 @@ def init_db():
             notes          TEXT,
             added_at       TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        # ── Contacts ──
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS contacts (
+            id         {auto},
+            name       TEXT NOT NULL,
+            email      TEXT NOT NULL,
+            role       TEXT NOT NULL,
+            company    TEXT NOT NULL DEFAULT 'Saturday Morning PJs',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Seed core team if table is empty
+        cur.execute("SELECT COUNT(*) AS cnt FROM contacts")
+        row_ = cur.fetchone()
+        if (row_["cnt"] if isinstance(row_, dict) else row_[0]) == 0:
+            p2 = p
+            cur.execute(
+                f"INSERT INTO contacts (name, email, role, company) VALUES ({p2},{p2},{p2},{p2})",
+                ("Nate Nagel", "nate@saturdaymorningpjs.com", "COO", "Saturday Morning PJs")
+            )
+            cur.execute(
+                f"INSERT INTO contacts (name, email, role, company) VALUES ({p2},{p2},{p2},{p2})",
+                ("Leanne Nagel", "leanne@saturdaymorningpjs.com", "CEO", "Saturday Morning PJs")
+            )
         # ── Claude Code task log ──
         cur.execute(f"""CREATE TABLE IF NOT EXISTS code_tasks (
             id                {auto},
@@ -704,6 +726,28 @@ def get_code_tasks(status=None, project=None, limit=50):
         q += " ORDER BY created_at DESC"
         if limit:
             q += f" LIMIT {int(limit)}"
+        cur.execute(q, params)
+        return [row(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def get_contacts(name=None, role=None, company=None):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        q = "SELECT * FROM contacts WHERE 1=1"
+        params = []
+        if name:
+            q += f" AND LOWER(name) LIKE LOWER({p})"; params.append(f"%{name}%")
+        if role:
+            q += f" AND LOWER(role) LIKE LOWER({p})"; params.append(f"%{role}%")
+        if company:
+            q += f" AND LOWER(company) LIKE LOWER({p})"; params.append(f"%{company}%")
+        q += " ORDER BY name"
         cur.execute(q, params)
         return [row(r) for r in cur.fetchall()]
     except Exception:

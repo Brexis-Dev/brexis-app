@@ -656,6 +656,19 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "get_contacts",
+        "description": "Look up team contacts stored in Purple Horizon. Use to find email, role, or company info for personnel. Filter by name or role.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Partial name to search (case-insensitive)"},
+                "role": {"type": "string", "description": "Role to filter by, e.g. CEO, COO"},
+                "company": {"type": "string", "description": "Company to filter by"}
+            },
+            "required": []
+        }
+    },
+    {
         "name": "calculate_profit",
         "description": "Calculate net profit after platform fees for a resale transaction.",
         "input_schema": {
@@ -1269,6 +1282,19 @@ def execute_tool(name, inputs, user_id):
                 f"{t['task_name']} — {t['status']}{outcome} | {t.get('created_at','')[:10]}"
             )
         return f"Code tasks ({len(tasks)}):\n" + "\n".join(lines)
+
+    if name == "get_contacts":
+        contacts = db.get_contacts(
+            name=inputs.get("name"),
+            role=inputs.get("role"),
+            company=inputs.get("company"),
+        )
+        if not contacts:
+            return "No contacts found matching those filters."
+        lines = []
+        for c in contacts:
+            lines.append(f"{c['name']} — {c['role']} at {c['company']} | {c['email']}")
+        return f"Team contacts ({len(contacts)}):\n" + "\n".join(lines)
 
     if name == "submit_slice_job":
         model    = inputs["model"]

@@ -294,6 +294,9 @@ Still log the task. Still review before anything ships.
 
 ---
 
+TEAM CONTACTS:
+Purple Horizon maintains a contacts database of key personnel. Use get_contacts to look up team members by name, role, or company. This eliminates the need to ask Nate for email addresses or roles each session.
+
 WEB SEARCH:
 You can search the web using the web_search tool via Brave Search API.
 
