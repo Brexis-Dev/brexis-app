@@ -280,17 +280,19 @@ def get_sessions(user_id):
 
 
 def create_session(user_id):
-    p = ph()
     url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
     pg = _is_postgres(url)
+    p = ph()
     conn = get_db()
     try:
         cur = conn.cursor()
+        if pg:
+            cur.execute(f"INSERT INTO chat_sessions (user_id, title) VALUES ({p},{p}) RETURNING id", (user_id, "New Conversation"))
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            return new_id
         cur.execute(f"INSERT INTO chat_sessions (user_id, title) VALUES ({p},{p})", (user_id, "New Conversation"))
         conn.commit()
-        if pg:
-            cur.execute("SELECT lastval()")
-            return cur.fetchone()[0]
         return cur.lastrowid
     finally:
         conn.close()
@@ -439,20 +441,25 @@ def search_inventory(user_id, query):
 # ── Task tracking ────────────────────────────────────────────────────────────
 
 def create_task(user_id, title, project="general", priority="normal", due_date=None, notes=None):
-    p = ph()
     url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
     pg = _is_postgres(url)
+    p = ph()
     conn = get_db()
     try:
         cur = conn.cursor()
+        if pg:
+            cur.execute(
+                f"INSERT INTO tasks (user_id, title, project, priority, due_date, notes) VALUES ({p},{p},{p},{p},{p},{p}) RETURNING id",
+                (user_id, title, project, priority, due_date, notes)
+            )
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            return {"id": new_id}
         cur.execute(
             f"INSERT INTO tasks (user_id, title, project, priority, due_date, notes) VALUES ({p},{p},{p},{p},{p},{p})",
             (user_id, title, project, priority, due_date, notes)
         )
         conn.commit()
-        if pg:
-            cur.execute("SELECT lastval()")
-            return {"id": cur.fetchone()[0]}
         return {"id": cur.lastrowid}
     except Exception as e:
         return {"error": str(e)}
@@ -539,19 +546,21 @@ def add_inventory_item(user_id, category, fields):
     if not clean:
         return {"error": "No valid fields provided."}
     clean["user_id"] = user_id
+    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
+    pg = _is_postgres(url)
     p = ph()
     cols = ", ".join(clean.keys())
     placeholders = ", ".join([p] * len(clean))
-    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
-    pg = _is_postgres(url)
     conn = get_db()
     try:
         cur = conn.cursor()
+        if pg:
+            cur.execute(f"INSERT INTO {category} ({cols}) VALUES ({placeholders}) RETURNING id", list(clean.values()))
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            return {"id": new_id}
         cur.execute(f"INSERT INTO {category} ({cols}) VALUES ({placeholders})", list(clean.values()))
         conn.commit()
-        if pg:
-            cur.execute("SELECT lastval()")
-            return {"id": cur.fetchone()[0]}
         return {"id": cur.lastrowid}
     except Exception as e:
         return {"error": str(e)}
@@ -629,21 +638,27 @@ def remove_inventory_item(user_id, category, item_id):
 # ── Claude Code task log ─────────────────────────────────────────────────────
 
 def create_code_task(task_name, size, project, approved_by="auto", brief=None, notes=None):
-    p = ph()
     url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
     pg = _is_postgres(url)
+    p = ph()
     conn = get_db()
     try:
         cur = conn.cursor()
+        if pg:
+            cur.execute(
+                f"INSERT INTO code_tasks (task_name, size, project, approved_by, brief, notes, approved_at) "
+                f"VALUES ({p},{p},{p},{p},{p},{p},CURRENT_TIMESTAMP) RETURNING id",
+                (task_name, size, project, approved_by, brief, notes)
+            )
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            return {"id": new_id}
         cur.execute(
             f"INSERT INTO code_tasks (task_name, size, project, approved_by, brief, notes, approved_at) "
             f"VALUES ({p},{p},{p},{p},{p},{p},CURRENT_TIMESTAMP)",
             (task_name, size, project, approved_by, brief, notes)
         )
         conn.commit()
-        if pg:
-            cur.execute("SELECT lastval()")
-            return {"id": cur.fetchone()[0]}
         return {"id": cur.lastrowid}
     except Exception as e:
         return {"error": str(e)}
@@ -699,20 +714,25 @@ def get_code_tasks(status=None, project=None, limit=50):
 
 def add_lrg_game(user_id, title, publisher="Limited Run Games", status="watching",
                  buy_price=0, est_resale=0, deadline=None, notes=None):
-    p = ph()
     url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
     pg = _is_postgres(url)
+    p = ph()
     conn = get_db()
     try:
         cur = conn.cursor()
+        if pg:
+            cur.execute(
+                f"INSERT INTO lrg_games (user_id, title, publisher, status, buy_price, est_resale, deadline, notes) VALUES ({p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                (user_id, title, publisher, status, buy_price, est_resale, deadline, notes)
+            )
+            new_id = cur.fetchone()["id"]
+            conn.commit()
+            return new_id
         cur.execute(
             f"INSERT INTO lrg_games (user_id, title, publisher, status, buy_price, est_resale, deadline, notes) VALUES ({p},{p},{p},{p},{p},{p},{p},{p})",
             (user_id, title, publisher, status, buy_price, est_resale, deadline, notes)
         )
         conn.commit()
-        if pg:
-            cur.execute("SELECT lastval()")
-            return cur.fetchone()[0]
         return cur.lastrowid
     except Exception as e:
         return {"error": str(e)}
