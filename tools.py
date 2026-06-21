@@ -43,17 +43,22 @@ def _call_relay(method, path, json_data=None):
     headers = {"Authorization": f"Bearer {secret}"} if secret else {}
     try:
         url = relay_url.rstrip("/") + path
+        print(f"[relay] {method} {url} payload={json_data}", flush=True)
         if method == "GET":
             r = req.get(url, headers=headers, timeout=15)
         else:
             r = req.post(url, json=json_data, headers=headers, timeout=20)
+        print(f"[relay] response: status={r.status_code} body={r.text[:500]}", flush=True)
         r.raise_for_status()
         return r.json()
-    except req.exceptions.ConnectionError:
+    except req.exceptions.ConnectionError as e:
+        print(f"[relay] ConnectionError: {e}", flush=True)
         return {"error": "Can't reach the print relay. Check that it's running and the tunnel is up."}
-    except req.exceptions.Timeout:
+    except req.exceptions.Timeout as e:
+        print(f"[relay] Timeout: {e}", flush=True)
         return {"error": "Print relay timed out. Printer may be busy."}
     except Exception as e:
+        print(f"[relay] Exception ({type(e).__name__}): {e}", flush=True)
         return {"error": str(e)}
 
 
@@ -710,6 +715,273 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "list_designs",
+        "description": "List 3D designs in the Brexis Design Library. Filter by category, status, or filament.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Filter by category, e.g. display, functional, prototype"},
+                "status": {"type": "string", "description": "Filter by status: draft, proven, retired"},
+                "filament": {"type": "string", "description": "Filter by filament type, e.g. PLA, PETG"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "get_design",
+        "description": "Get a specific design from the Design Library by its design_id slug (e.g. nes-cart-v2) or numeric id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "design_ref": {"type": "string", "description": "The design_id slug or numeric id"}
+            },
+            "required": ["design_ref"]
+        }
+    },
+    {
+        "name": "search_designs",
+        "description": "Search designs by keyword in name or notes. Optionally filter by tags.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword to search in name and notes"},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tag filter list, e.g. ['nintendo', 'display']"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "create_design",
+        "description": "Add a new design to the Design Library.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "design_id": {"type": "string", "description": "URL-safe slug, e.g. nes-cart-v4"},
+                "version": {"type": "integer", "default": 1},
+                "parent_id": {"type": "integer", "description": "id of the parent design (previous version)"},
+                "category": {"type": "string", "description": "display, functional, prototype, art"},
+                "filament": {"type": "string", "description": "PLA, PETG, TPU, PLA-CF, PETG-CF"},
+                "stl_path": {"type": "string"},
+                "gcode_path": {"type": "string"},
+                "slicer_profile": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "status": {"type": "string", "description": "draft, proven, retired"},
+                "notes": {"type": "string"},
+                "nate_feedback": {"type": "string"}
+            },
+            "required": ["name", "design_id"]
+        }
+    },
+    {
+        "name": "update_design",
+        "description": "Update an existing design in the library. Use design_id slug or numeric id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "design_ref": {"type": "string", "description": "design_id slug or numeric id"},
+                "name": {"type": "string"},
+                "version": {"type": "integer"},
+                "parent_id": {"type": "integer"},
+                "category": {"type": "string"},
+                "filament": {"type": "string"},
+                "stl_path": {"type": "string"},
+                "gcode_path": {"type": "string"},
+                "slicer_profile": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "status": {"type": "string"},
+                "notes": {"type": "string"},
+                "nate_feedback": {"type": "string"}
+            },
+            "required": ["design_ref"]
+        }
+    },
+    {
+        "name": "log_print",
+        "description": "Append a print record to a design's history. Capture settings and outcome.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "design_ref": {"type": "string", "description": "design_id slug or numeric id"},
+                "filament": {"type": "string"},
+                "nozzle_temp": {"type": "integer"},
+                "bed_temp": {"type": "integer"},
+                "print_speed": {"type": "integer", "description": "mm/s"},
+                "layer_height": {"type": "number", "description": "e.g. 0.15"},
+                "infill": {"type": "integer", "description": "percentage 0-100"},
+                "ironing": {"type": "boolean", "default": False},
+                "top_solid_layers": {"type": "integer"},
+                "outcome": {"type": "string", "description": "success, failed, partial", "default": "success"},
+                "notes": {"type": "string"},
+                "nate_feedback": {"type": "string"}
+            },
+            "required": ["design_ref", "outcome"]
+        }
+    },
+    {
+        "name": "get_design_history",
+        "description": "Get the full print history for a design.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "design_ref": {"type": "string", "description": "design_id slug or numeric id"},
+                "limit": {"type": "integer", "default": 50}
+            },
+            "required": ["design_ref"]
+        }
+    },
+    {
+        "name": "get_design_versions",
+        "description": "Get the full version tree for a design — all ancestors and descendants from root.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "design_ref": {"type": "string", "description": "design_id slug or numeric id — any version in the tree works"}
+            },
+            "required": ["design_ref"]
+        }
+    },
+    {
+        "name": "list_purchase_orders",
+        "description": "List purchase orders. Filter by status, category, folder_id, or vendor.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status":    {"type": "string", "description": "to_be_purchased, ordered, received"},
+                "category":  {"type": "string", "description": "filament, hardware, apparel, supplies, equipment, other"},
+                "folder_id": {"type": "integer"},
+                "vendor":    {"type": "string"},
+                "date_from": {"type": "string", "description": "ISO date YYYY-MM-DD"},
+                "date_to":   {"type": "string", "description": "ISO date YYYY-MM-DD"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "get_purchase_order",
+        "description": "Get a single purchase order by ID or PO number (e.g. PO-0001).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "po_ref": {"type": "string", "description": "Numeric id or PO number string"}
+            },
+            "required": ["po_ref"]
+        }
+    },
+    {
+        "name": "create_purchase_order",
+        "description": "Create a new purchase order. PO number is auto-generated. total_cost is auto-calculated from items.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":     {"type": "string"},
+                "vendor":    {"type": "string"},
+                "category":  {"type": "string", "description": "filament, hardware, apparel, supplies, equipment, other"},
+                "items":     {
+                    "type": "array",
+                    "description": "Line items",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name":       {"type": "string"},
+                            "qty":        {"type": "number"},
+                            "unit_price": {"type": "number"},
+                            "notes":      {"type": "string"}
+                        },
+                        "required": ["name", "qty", "unit_price"]
+                    }
+                },
+                "status":    {"type": "string", "default": "to_be_purchased"},
+                "folder_id": {"type": "integer"},
+                "priority":  {"type": "string", "description": "high, normal, low", "default": "normal"},
+                "notes":     {"type": "string"}
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "update_purchase_order",
+        "description": "Update fields on an existing purchase order. Recalculates total_cost if items are changed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "po_ref":    {"type": "string", "description": "Numeric id or PO number"},
+                "title":     {"type": "string"},
+                "vendor":    {"type": "string"},
+                "category":  {"type": "string"},
+                "items":     {"type": "array"},
+                "folder_id": {"type": "integer"},
+                "priority":  {"type": "string"},
+                "notes":     {"type": "string"}
+            },
+            "required": ["po_ref"]
+        }
+    },
+    {
+        "name": "update_po_status",
+        "description": "Move a PO through the status progression: to_be_purchased → ordered → received. Timestamps ordered_at and received_at are set automatically.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "po_ref": {"type": "string", "description": "Numeric id or PO number"},
+                "status": {"type": "string", "description": "to_be_purchased, ordered, received"}
+            },
+            "required": ["po_ref", "status"]
+        }
+    },
+    {
+        "name": "search_purchase_orders",
+        "description": "Search purchase orders by keyword across title, vendor, notes, and PO number.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "list_folders",
+        "description": "List all PO folders with their hierarchy (root folders and children).",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "create_folder",
+        "description": "Create a new PO folder, optionally nested under a parent folder.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name":      {"type": "string"},
+                "parent_id": {"type": "integer", "description": "Parent folder id for nesting"}
+            },
+            "required": ["name"]
+        }
+    },
+    {
+        "name": "get_folder_orders",
+        "description": "Get all purchase orders in a specific folder.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": "integer"}
+            },
+            "required": ["folder_id"]
+        }
+    },
+    {
+        "name": "get_po_summary",
+        "description": "Get operating expense summary — total spend and PO count broken down by status and category.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
         "name": "calculate_profit",
         "description": "Calculate net profit after platform fees for a resale transaction.",
         "input_schema": {
@@ -1242,7 +1514,10 @@ def execute_tool(name, inputs, user_id):
         description = inputs.get("description", "")
         style       = inputs.get("style", "realistic")
         design_id   = inputs.get("design_id")
-        payload = {"prompt": prompt, "style": style}
+        meshy_key = db.get_config("MESHY_API_KEY")
+        if not meshy_key:
+            return "Meshy API key not configured. Add it in /settings → Meshy API Key."
+        payload = {"prompt": prompt, "style": style, "meshy_api_key": meshy_key}
         if design_id:
             payload["design_id"] = design_id
         r = _call_relay("POST", "/design/meshy", payload)
@@ -1262,6 +1537,7 @@ def execute_tool(name, inputs, user_id):
         return result
 
     if name == "send_to_printer":
+        print("[tools] send_to_printer handler reached", flush=True)
         gcode_path = inputs["gcode_path"]
         print(f"[tools] send_to_printer called with gcode_path={gcode_path!r}", flush=True)
         r = _call_relay("POST", "/printer/start", {"gcode_path": gcode_path})
@@ -1413,5 +1689,229 @@ def execute_tool(name, inputs, user_id):
             f"- Filament: {filament} | Goal: {goal}\n"
             f"Ready to print. Call send_to_printer with gcode_path={gcode}"
         )
+
+    # ── Purchase Orders ──
+    if name == "list_purchase_orders":
+        orders = db.list_purchase_orders(
+            status=inputs.get("status"),
+            category=inputs.get("category"),
+            folder_id=inputs.get("folder_id"),
+            vendor=inputs.get("vendor"),
+            date_from=inputs.get("date_from"),
+            date_to=inputs.get("date_to"),
+        )
+        if not orders:
+            return "No purchase orders found matching those filters."
+        lines = [
+            f"[{o['po_number']}] {o['title']} | {o['vendor'] or 'no vendor'} | "
+            f"{o['category']} | {o['status']} | ${o['total_cost']:.2f} | {o['priority']}"
+            for o in orders
+        ]
+        return f"Purchase orders ({len(orders)}):\n" + "\n".join(lines)
+
+    if name == "get_purchase_order":
+        po = db.get_purchase_order(inputs["po_ref"])
+        if not po:
+            return f"PO not found: {inputs['po_ref']}"
+        items = po.get("items") or []
+        item_lines = "\n".join(
+            f"  - {i.get('name','?')} x{i.get('qty',1)} @ ${i.get('unit_price',0):.2f}"
+            + (f" ({i['notes']})" if i.get("notes") else "")
+            for i in items
+        )
+        return (
+            f"{po['po_number']} — {po['title']}\n"
+            f"Vendor: {po.get('vendor') or 'none'} | Category: {po['category']} | "
+            f"Status: {po['status']} | Priority: {po['priority']}\n"
+            f"Total: ${po['total_cost']:.2f}\n"
+            f"Items:\n{item_lines or '  (none)'}\n"
+            f"Notes: {po.get('notes') or 'none'}\n"
+            f"Created: {str(po.get('created_at',''))[:10]}"
+            + (f" | Ordered: {str(po['ordered_at'])[:10]}" if po.get("ordered_at") else "")
+            + (f" | Received: {str(po['received_at'])[:10]}" if po.get("received_at") else "")
+        )
+
+    if name == "create_purchase_order":
+        result = db.create_purchase_order(
+            title=inputs["title"],
+            vendor=inputs.get("vendor"),
+            category=inputs.get("category", "other"),
+            items=inputs.get("items"),
+            status=inputs.get("status", "to_be_purchased"),
+            folder_id=inputs.get("folder_id"),
+            priority=inputs.get("priority", "normal"),
+            notes=inputs.get("notes"),
+        )
+        if "error" in result:
+            return f"Failed to create PO: {result['error']}"
+        db.log_task("purchase_orders", "create_po", f"{result['po_number']} created — {inputs['title']}", "success")
+        return f"Created {result['po_number']} — {inputs['title']} | Total: ${result['total_cost']:.2f}"
+
+    if name == "update_purchase_order":
+        po_ref = inputs.pop("po_ref")
+        result = db.update_purchase_order(po_ref, inputs)
+        if "error" in result:
+            return f"Update failed: {result['error']}"
+        db.log_task("purchase_orders", "update_po", f"{po_ref} updated", "success")
+        return f"PO {po_ref} updated."
+
+    if name == "update_po_status":
+        result = db.update_po_status(inputs["po_ref"], inputs["status"])
+        if "error" in result:
+            return f"Status update failed: {result['error']}"
+        db.log_task("purchase_orders", "status_change", f"{inputs['po_ref']} → {inputs['status']}", "success")
+        return f"{inputs['po_ref']} status set to {inputs['status']}."
+
+    if name == "search_purchase_orders":
+        orders = db.search_purchase_orders(inputs["query"])
+        if not orders:
+            return f"No POs found for: {inputs['query']}"
+        lines = [f"[{o['po_number']}] {o['title']} | {o['vendor'] or '—'} | {o['status']} | ${o['total_cost']:.2f}" for o in orders]
+        return f"Search results ({len(orders)}):\n" + "\n".join(lines)
+
+    if name == "list_folders":
+        folders = db.list_folders()
+        if not folders:
+            return "No folders found."
+        roots = [f for f in folders if not f.get("parent_id")]
+        children = [f for f in folders if f.get("parent_id")]
+        lines = []
+        for r in roots:
+            lines.append(f"[{r['id']}] {r['name']}")
+            for c in children:
+                if c["parent_id"] == r["id"]:
+                    lines.append(f"  └── [{c['id']}] {c['name']}")
+        return "Folders:\n" + "\n".join(lines)
+
+    if name == "create_folder":
+        result = db.create_folder(inputs["name"], parent_id=inputs.get("parent_id"))
+        if "error" in result:
+            return f"Failed to create folder: {result['error']}"
+        return f"Folder created: {inputs['name']} (id={result['id']})"
+
+    if name == "get_folder_orders":
+        orders = db.get_folder_orders(inputs["folder_id"])
+        if not orders:
+            return f"No orders in folder {inputs['folder_id']}."
+        lines = [f"[{o['po_number']}] {o['title']} | {o['status']} | ${o['total_cost']:.2f}" for o in orders]
+        return f"Orders in folder ({len(orders)}):\n" + "\n".join(lines)
+
+    if name == "get_po_summary":
+        summary = db.get_po_summary()
+        if not summary:
+            return "No purchase order data available."
+        lines = ["Operating Expense Summary:"]
+        for status, cats in summary.get("by_status_category", {}).items():
+            status_total = summary["totals_by_status"].get(status, 0)
+            lines.append(f"\n{status.upper()} — ${status_total:.2f} total")
+            for cat, data in cats.items():
+                lines.append(f"  {cat}: ${data['total']:.2f} ({data['count']} PO{'s' if data['count']!=1 else ''})")
+        return "\n".join(lines)
+
+    # ── Design Library ──
+    if name == "list_designs":
+        designs = db.list_designs(
+            category=inputs.get("category"),
+            status=inputs.get("status"),
+            filament=inputs.get("filament"),
+        )
+        if not designs:
+            return "No designs found matching those filters."
+        lines = [f"[{d['design_id']}] v{d['version']} — {d['name']} | {d['status']} | {d['filament']} | tags: {', '.join(d.get('tags') or [])}" for d in designs]
+        return f"Designs ({len(designs)}):\n" + "\n".join(lines)
+
+    if name == "get_design":
+        d = db.get_design(inputs["design_ref"])
+        if not d:
+            return f"Design not found: {inputs['design_ref']}"
+        tags = ", ".join(d.get("tags") or [])
+        return (
+            f"Design: {d['name']} ({d['design_id']}) v{d['version']}\n"
+            f"Status: {d['status']} | Category: {d['category']} | Filament: {d['filament']}\n"
+            f"Tags: {tags}\n"
+            f"STL: {d.get('stl_path') or 'none'}\n"
+            f"Gcode: {d.get('gcode_path') or 'none'}\n"
+            f"Notes: {d.get('notes') or 'none'}\n"
+            f"Nate feedback: {d.get('nate_feedback') or 'none'}"
+        )
+
+    if name == "search_designs":
+        results = db.search_designs(inputs["query"], tags=inputs.get("tags"))
+        if not results:
+            return f"No designs found for: {inputs['query']}"
+        lines = [f"[{d['design_id']}] v{d['version']} — {d['name']} | {d['status']} | tags: {', '.join(d.get('tags') or [])}" for d in results]
+        return f"Search results ({len(results)}):\n" + "\n".join(lines)
+
+    if name == "create_design":
+        result = db.create_design(
+            name=inputs["name"],
+            design_id=inputs["design_id"],
+            version=inputs.get("version", 1),
+            parent_id=inputs.get("parent_id"),
+            category=inputs.get("category", "prototype"),
+            filament=inputs.get("filament", "PLA"),
+            stl_path=inputs.get("stl_path"),
+            gcode_path=inputs.get("gcode_path"),
+            slicer_profile=inputs.get("slicer_profile"),
+            tags=inputs.get("tags"),
+            status=inputs.get("status", "draft"),
+            thumbnail_url=inputs.get("thumbnail_url"),
+            notes=inputs.get("notes"),
+            nate_feedback=inputs.get("nate_feedback"),
+        )
+        if "error" in result:
+            return f"Failed to create design: {result['error']}"
+        db.log_task("design_library", "create_design", f"{inputs['design_id']} created (id={result['id']})", "success")
+        return f"Design created: {inputs['design_id']} (id={result['id']})"
+
+    if name == "update_design":
+        design_ref = inputs.pop("design_ref")
+        result = db.update_design(design_ref, inputs)
+        if "error" in result:
+            return f"Update failed: {result['error']}"
+        db.log_task("design_library", "update_design", f"{design_ref} updated", "success")
+        return f"Design {design_ref} updated."
+
+    if name == "log_print":
+        result = db.add_print_record(
+            design_id_or_slug=inputs["design_ref"],
+            filament=inputs.get("filament"),
+            nozzle_temp=inputs.get("nozzle_temp"),
+            bed_temp=inputs.get("bed_temp"),
+            print_speed=inputs.get("print_speed"),
+            layer_height=inputs.get("layer_height"),
+            infill=inputs.get("infill"),
+            ironing=inputs.get("ironing", False),
+            top_solid_layers=inputs.get("top_solid_layers"),
+            outcome=inputs.get("outcome", "success"),
+            notes=inputs.get("notes"),
+            nate_feedback=inputs.get("nate_feedback"),
+        )
+        if "error" in result:
+            return f"Failed to log print: {result['error']}"
+        db.log_task("design_library", "log_print", f"{inputs['design_ref']} → {inputs.get('outcome','success')} (record id={result['id']})", "success")
+        return f"Print record logged for {inputs['design_ref']} (id={result['id']}). Outcome: {inputs.get('outcome','success')}."
+
+    if name == "get_design_history":
+        history = db.get_design_history(inputs["design_ref"], limit=inputs.get("limit", 50))
+        if not history:
+            return f"No print history found for: {inputs['design_ref']}"
+        lines = []
+        for h in history:
+            lines.append(
+                f"[{h.get('printed_at','?')[:10]}] {h.get('outcome','?')} | "
+                f"{h.get('filament','?')} {h.get('nozzle_temp','?')}°/{h.get('bed_temp','?')}° "
+                f"layer={h.get('layer_height','?')} infill={h.get('infill','?')}% "
+                f"speed={h.get('print_speed','?')}mm/s ironing={h.get('ironing',False)} "
+                f"top={h.get('top_solid_layers','?')} | {h.get('nate_feedback') or h.get('notes') or ''}"
+            )
+        return f"Print history for {inputs['design_ref']} ({len(history)} records):\n" + "\n".join(lines)
+
+    if name == "get_design_versions":
+        versions = db.get_design_versions(inputs["design_ref"])
+        if not versions:
+            return f"No version tree found for: {inputs['design_ref']}"
+        lines = [f"v{d['version']} — {d['design_id']} | {d['status']} | {d.get('nate_feedback') or d.get('notes') or 'no feedback'}" for d in versions]
+        return f"Version tree ({len(versions)} versions):\n" + "\n".join(lines)
 
     return f"Unknown tool: {name}"

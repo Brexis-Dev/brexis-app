@@ -311,6 +311,25 @@ API keys are stored in /settings (ETSY_API_KEY, PINTEREST_ACCESS_TOKEN).
 TEAM CONTACTS:
 Purple Horizon maintains a contacts database of key personnel. Use get_contacts to look up team members by name, role, or company. This eliminates the need to ask Nate for email addresses or roles each session.
 
+PURCHASE ORDERS:
+Purple Horizon tracks all physical procurement through a Purchase Orders system. Tools: list_purchase_orders, get_purchase_order, create_purchase_order, update_purchase_order, update_po_status, search_purchase_orders, list_folders, create_folder, get_folder_orders, get_po_summary.
+- Every physical purchase gets a PO. Filament, hardware, apparel supplies, equipment — all of it.
+- PO numbers are auto-generated sequentially (PO-0001, PO-0002...). Never assign manually.
+- total_cost auto-calculates from the items array. Always pass items with name, qty, unit_price.
+- Status flow: to_be_purchased → ordered → received. Use update_po_status; ordered_at and received_at timestamp automatically.
+- Default folders: "Saturday Morning PJs Operating Expenses" (root) → To Be Purchased / Ordered / Received (children). Match PO status to folder when creating or transitioning.
+- Use get_po_summary for operating expense reporting — spend by category and status.
+- When Nate confirms an order was placed, call update_po_status → ordered. When delivery confirmed, → received.
+- Price monitoring runs daily at 9:15 AM on all to_be_purchased POs. Alerts fire to Discord #brexis-alerts and Nate's email when any item drops 10%+ below its PO unit_price. alert_triggered resets automatically if price recovers. You can trigger a manual check via POST /purchase-orders/price-check.
+
+DESIGN LIBRARY:
+Purple Horizon maintains a design library for all 3D printed items. Tools: list_designs, get_design, search_designs, create_design, update_design, log_print, get_design_history, get_design_versions.
+- Every design has a unique slug (design_id) like nes-cart-v2 and belongs to a version tree via parent_id.
+- Status values: draft (in progress), proven (production quality), retired (no longer active).
+- Always log a print record (log_print) after any confirmed print job completes — capture actual settings and Nate feedback.
+- Use get_design_versions to show the full version history tree for any design; it walks ancestors and descendants from root.
+- When Nate gives feedback on a print, update the design (update_design) with nate_feedback and adjust status accordingly.
+
 WEB SEARCH:
 You can search the web using the web_search tool via Brave Search API.
 
@@ -533,7 +552,7 @@ def settings():
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
             "printer_relay_url", "printer_relay_secret",
             "brave_search_key", "claude_code_token",
-            "etsy_api_key", "pinterest_access_token",
+            "etsy_api_key", "pinterest_access_token", "meshy_api_key",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -551,6 +570,7 @@ def settings():
             "claude_code_token": "CLAUDE_CODE_API_TOKEN",
             "etsy_api_key": "ETSY_API_KEY",
             "pinterest_access_token": "PINTEREST_ACCESS_TOKEN",
+            "meshy_api_key": "MESHY_API_KEY",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -582,6 +602,8 @@ def settings():
     masked_brave         = ("BSA-..." + brave_key[-6:]) if len(brave_key) > 10 else ""
     cc_token             = db.get_config("CLAUDE_CODE_API_TOKEN") or ""
     masked_cc_token      = ("..." + cc_token[-6:]) if len(cc_token) > 6 else ""
+    meshy_key            = db.get_config("MESHY_API_KEY") or ""
+    masked_meshy         = ("..." + meshy_key[-6:]) if len(meshy_key) > 6 else ""
 
     import discord_bot
     import scheduler as sched
@@ -603,6 +625,7 @@ def settings():
         masked_relay_secret=masked_relay_secret,
         masked_brave=masked_brave,
         masked_cc_token=masked_cc_token,
+        masked_meshy=masked_meshy,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )
@@ -666,6 +689,227 @@ def api_code_task_result(task_id):
         pass
 
     return jsonify({"ok": True, "task_id": task_id, "status": "review"})
+
+
+# ── Design Library ─────────────────────────────────────────────────────────────
+
+@app.route("/designs", methods=["GET"])
+@login_required
+def designs_list():
+    category = request.args.get("category")
+    status = request.args.get("status")
+    filament = request.args.get("filament")
+    return jsonify(db.list_designs(category=category, status=status, filament=filament))
+
+
+@app.route("/designs/search", methods=["GET"])
+@login_required
+def designs_search():
+    q = request.args.get("q", "").strip()
+    tags_raw = request.args.get("tags")
+    tags = [t.strip() for t in tags_raw.split(",")] if tags_raw else None
+    if not q and not tags:
+        return jsonify({"error": "Provide q or tags parameter"}), 400
+    return jsonify(db.search_designs(q, tags=tags))
+
+
+@app.route("/designs/<design_ref>", methods=["GET"])
+@login_required
+def designs_get(design_ref):
+    d = db.get_design(design_ref)
+    if not d:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(d)
+
+
+@app.route("/designs", methods=["POST"])
+@login_required
+def designs_create():
+    data = request.get_json(force=True)
+    result = db.create_design(
+        name=data.get("name"),
+        design_id=data.get("design_id"),
+        version=data.get("version", 1),
+        parent_id=data.get("parent_id"),
+        category=data.get("category", "prototype"),
+        filament=data.get("filament", "PLA"),
+        stl_path=data.get("stl_path"),
+        gcode_path=data.get("gcode_path"),
+        slicer_profile=data.get("slicer_profile"),
+        tags=data.get("tags"),
+        status=data.get("status", "draft"),
+        thumbnail_url=data.get("thumbnail_url"),
+        notes=data.get("notes"),
+        nate_feedback=data.get("nate_feedback"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@app.route("/designs/<design_ref>", methods=["PUT"])
+@login_required
+def designs_update(design_ref):
+    data = request.get_json(force=True)
+    result = db.update_design(design_ref, data)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/designs/<design_ref>/print", methods=["POST"])
+@login_required
+def designs_add_print(design_ref):
+    data = request.get_json(force=True)
+    result = db.add_print_record(
+        design_id_or_slug=design_ref,
+        filament=data.get("filament"),
+        nozzle_temp=data.get("nozzle_temp"),
+        bed_temp=data.get("bed_temp"),
+        print_speed=data.get("print_speed"),
+        layer_height=data.get("layer_height"),
+        infill=data.get("infill"),
+        ironing=data.get("ironing", False),
+        top_solid_layers=data.get("top_solid_layers"),
+        outcome=data.get("outcome", "success"),
+        notes=data.get("notes"),
+        nate_feedback=data.get("nate_feedback"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@app.route("/designs/<design_ref>/history", methods=["GET"])
+@login_required
+def designs_history(design_ref):
+    limit = int(request.args.get("limit", 50))
+    return jsonify(db.get_design_history(design_ref, limit=limit))
+
+
+@app.route("/designs/<design_ref>/versions", methods=["GET"])
+@login_required
+def designs_versions(design_ref):
+    return jsonify(db.get_design_versions(design_ref))
+
+
+# ── Purchase Orders ────────────────────────────────────────────────────────────
+
+@app.route("/purchase-orders", methods=["GET"])
+@login_required
+def po_list():
+    return jsonify(db.list_purchase_orders(
+        status=request.args.get("status"),
+        category=request.args.get("category"),
+        folder_id=request.args.get("folder_id"),
+        vendor=request.args.get("vendor"),
+        date_from=request.args.get("date_from"),
+        date_to=request.args.get("date_to"),
+    ))
+
+
+@app.route("/purchase-orders/summary", methods=["GET"])
+@login_required
+def po_summary():
+    return jsonify(db.get_po_summary())
+
+
+@app.route("/purchase-orders/search", methods=["GET"])
+@login_required
+def po_search():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "Provide q parameter"}), 400
+    return jsonify(db.search_purchase_orders(q))
+
+
+@app.route("/purchase-orders/<po_ref>", methods=["GET"])
+@login_required
+def po_get(po_ref):
+    po = db.get_purchase_order(po_ref)
+    if not po:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(po)
+
+
+@app.route("/purchase-orders", methods=["POST"])
+@login_required
+def po_create():
+    data = request.get_json(force=True)
+    result = db.create_purchase_order(
+        title=data.get("title"),
+        vendor=data.get("vendor"),
+        category=data.get("category", "other"),
+        items=data.get("items"),
+        status=data.get("status", "to_be_purchased"),
+        folder_id=data.get("folder_id"),
+        priority=data.get("priority", "normal"),
+        notes=data.get("notes"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@app.route("/purchase-orders/<po_ref>", methods=["PUT"])
+@login_required
+def po_update(po_ref):
+    data = request.get_json(force=True)
+    result = db.update_purchase_order(po_ref, data)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/purchase-orders/<po_ref>/status", methods=["PUT"])
+@login_required
+def po_update_status(po_ref):
+    data = request.get_json(force=True)
+    status = data.get("status")
+    if not status:
+        return jsonify({"error": "status field required"}), 400
+    result = db.update_po_status(po_ref, status)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/folders", methods=["GET"])
+@login_required
+def folders_list():
+    return jsonify(db.list_folders())
+
+
+@app.route("/folders", methods=["POST"])
+@login_required
+def folders_create():
+    data = request.get_json(force=True)
+    result = db.create_folder(data.get("name"), parent_id=data.get("parent_id"))
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@app.route("/folders/<int:folder_id>/orders", methods=["GET"])
+@login_required
+def folder_orders(folder_id):
+    return jsonify(db.get_folder_orders(folder_id))
+
+
+@app.route("/purchase-orders/price-check", methods=["POST"])
+@login_required
+def po_price_check():
+    import scheduler as sched
+    import threading
+    threading.Thread(target=sched.job_po_price_monitor, daemon=True).start()
+    return jsonify({"ok": True, "message": "Price check started in background."})
+
+
+@app.route("/purchase-orders/price-alerts", methods=["GET"])
+@login_required
+def po_price_alerts():
+    import scheduler as sched
+    return jsonify(sched.get_price_alerts())
 
 
 @app.route("/tasks/code")

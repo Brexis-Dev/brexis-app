@@ -180,6 +180,18 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>3D Design — Meshy AI</h2>
+        <div class="form-group">
+          <label>Meshy API Key</label>
+          <input type="password" name="meshy_api_key" placeholder="Paste Meshy API key..." autocomplete="off">
+          {% if masked_meshy %}
+          <div class="current">Current: {{ masked_meshy }}</div>
+          {% endif %}
+          <div class="hint">From meshy.ai — enables Brexis to generate organic and artistic 3D models via text-to-3D (figures, crests, characters, decorative pieces).</div>
+        </div>
+      </div>
+
       <button class="btn" type="submit">Save All Settings</button>
     </form>
   </div>
