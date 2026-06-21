@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code Tasks — Brexis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f3ff; min-height: 100vh; }
+    .topbar { background: #1e1b4b; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { color: #d4af37; font-weight: 800; font-size: 1.1rem; letter-spacing: 1px; text-decoration: none; }
+    .nav { display: flex; gap: 16px; }
+    .nav a { color: rgba(255,255,255,0.6); font-size: 0.85rem; text-decoration: none; }
+    .nav a:hover { color: white; }
+    .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #1e1b4b; font-size: 1.3rem; margin-bottom: 4px; }
+    .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 24px; }
+    .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .filter-btn { padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+      text-decoration: none; border: 1.5px solid #ede9fe; color: #7c3aed; background: white; }
+    .filter-btn.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+    .task-card { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px;
+      box-shadow: 0 1px 4px rgba(124,58,237,0.07); border-left: 4px solid #ede9fe; }
+    .task-card.approved { border-left-color: #10b981; }
+    .task-card.in-progress { border-left-color: #f59e0b; }
+    .task-card.review { border-left-color: #6366f1; }
+    .task-card.cancelled { border-left-color: #ef4444; }
+    .task-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .task-id { font-size: 0.75rem; font-weight: 700; color: #9ca3af; font-family: monospace; }
+    .task-name { font-size: 0.95rem; font-weight: 600; color: #1e1b4b; flex: 1; }
+    .badge { font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 10px; text-transform: uppercase; }
+    .badge-small  { background: #ede9fe; color: #7c3aed; }
+    .badge-medium { background: #fef3c7; color: #92400e; }
+    .badge-major  { background: #fee2e2; color: #b91c1c; }
+    .badge-status-queued      { background: #f3f4f6; color: #6b7280; }
+    .badge-status-in-progress { background: #fef3c7; color: #92400e; }
+    .badge-status-review      { background: #e0e7ff; color: #4338ca; }
+    .badge-status-completed   { background: #d1fae5; color: #065f46; }
+    .badge-status-cancelled   { background: #fee2e2; color: #b91c1c; }
+    .task-meta { font-size: 0.78rem; color: #6b7280; display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+    .task-notes { font-size: 0.82rem; color: #374151; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+    .outcome-approved { color: #065f46; font-weight: 600; }
+    .outcome-revise   { color: #92400e; font-weight: 600; }
+    .outcome-escalate { color: #b91c1c; font-weight: 600; }
+    .empty { text-align: center; color: #9ca3af; padding: 60px 0; font-size: 0.9rem; }
+    details { margin-top: 10px; }
+    summary { font-size: 0.78rem; color: #7c3aed; cursor: pointer; font-weight: 600; }
+    .brief-text { background: #f9f7ff; border-radius: 8px; padding: 12px; font-size: 0.78rem;
+      color: #374151; white-space: pre-wrap; margin-top: 8px; font-family: monospace; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/chat" class="brand">BREXIS</a>
+    <div class="nav">
+      <a href="/jobs">Jobs</a>
+      <a href="/logs">Logs</a>
+      <a href="/chat">← Chat</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Claude Code Tasks</h1>
+    <p class="sub">Task log — every build Brexis has handed to Claude Code.</p>
+
+    <div class="filters">
+      <a href="/tasks/code" class="filter-btn {% if not status_filter %}active{% endif %}">All</a>
+      <a href="/tasks/code?status=queued"      class="filter-btn {% if status_filter=='queued' %}active{% endif %}">Queued</a>
+      <a href="/tasks/code?status=in-progress" class="filter-btn {% if status_filter=='in-progress' %}active{% endif %}">In Progress</a>
+      <a href="/tasks/code?status=review"      class="filter-btn {% if status_filter=='review' %}active{% endif %}">Review</a>
+      <a href="/tasks/code?status=completed"   class="filter-btn {% if status_filter=='completed' %}active{% endif %}">Completed</a>
+      <a href="/tasks/code?status=cancelled"   class="filter-btn {% if status_filter=='cancelled' %}active{% endif %}">Cancelled</a>
+    </div>
+
+    {% if tasks %}
+      {% for t in tasks %}
+      <div class="task-card {{ t.status if t.status == 'completed' else t.status }}">
+        <div class="task-header">
+          <span class="task-id">TASK-{{ '%04d' % t.id }}</span>
+          <span class="task-name">{{ t.task_name }}</span>
+          <span class="badge badge-{{ t.size }}">{{ t.size }}</span>
+          <span class="badge badge-status-{{ t.status }}">{{ t.status }}</span>
+        </div>
+        <div class="task-meta">
+          <span>Project: {{ t.project }}</span>
+          <span>Approved by: {{ t.approved_by }}</span>
+          {% if t.review_outcome %}
+          <span>Review:
+            <span class="outcome-{{ t.review_outcome }}">{{ t.review_outcome }}</span>
+          </span>
+          {% endif %}
+          {% if t.revisions_count %}
+          <span>Revisions: {{ t.revisions_count }}</span>
+          {% endif %}
+          <span>Created: {{ t.created_at[:10] if t.created_at else '—' }}</span>
+          {% if t.completed_at %}
+          <span>Completed: {{ t.completed_at[:10] }}</span>
+          {% endif %}
+        </div>
+        {% if t.files_changed %}
+        <div class="task-meta">
+          <span>Files: {{ t.files_changed }}</span>
+        </div>
+        {% endif %}
+        {% if t.notes %}
+        <div class="task-notes">{{ t.notes }}</div>
+        {% endif %}
+        {% if t.brief %}
+        <details>
+          <summary>View Brief</summary>
+          <div class="brief-text">{{ t.brief }}</div>
+        </details>
+        {% endif %}
+        {% if t.completion_report %}
+        <details>
+          <summary>View Completion Report</summary>
+          <div class="brief-text">{{ t.completion_report }}</div>
+        </details>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No code tasks yet. Brexis will log them here as builds get handed off.</div>
+    {% endif %}
+  </div>
+</body>
+</html>

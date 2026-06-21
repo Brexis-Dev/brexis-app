@@ -213,6 +213,26 @@ def init_db():
             notes          TEXT,
             added_at       TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        # ── Claude Code task log ──
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS code_tasks (
+            id                {auto},
+            task_name         TEXT NOT NULL,
+            size              TEXT NOT NULL DEFAULT 'small',
+            project           TEXT NOT NULL DEFAULT 'general',
+            status            TEXT NOT NULL DEFAULT 'queued',
+            approved_by       TEXT NOT NULL DEFAULT 'auto',
+            approved_at       TEXT,
+            handed_off_at     TEXT,
+            completed_at      TEXT,
+            review_outcome    TEXT,
+            revisions_count   INTEGER DEFAULT 0,
+            files_changed     TEXT,
+            dependencies_added TEXT,
+            notes             TEXT,
+            brief             TEXT,
+            completion_report TEXT,
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
         conn.commit()
     finally:
         conn.close()
@@ -602,6 +622,77 @@ def remove_inventory_item(user_id, category, item_id):
         return {"deleted": cur.rowcount > 0}
     except Exception as e:
         return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+# ── Claude Code task log ─────────────────────────────────────────────────────
+
+def create_code_task(task_name, size, project, approved_by="auto", brief=None, notes=None):
+    p = ph()
+    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
+    pg = _is_postgres(url)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO code_tasks (task_name, size, project, approved_by, brief, notes, approved_at) "
+            f"VALUES ({p},{p},{p},{p},{p},{p},CURRENT_TIMESTAMP)",
+            (task_name, size, project, approved_by, brief, notes)
+        )
+        conn.commit()
+        if pg:
+            cur.execute("SELECT lastval()")
+            return {"id": cur.fetchone()[0]}
+        return {"id": cur.lastrowid}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def update_code_task(task_id, fields):
+    allowed = {
+        "status", "handed_off_at", "completed_at", "review_outcome",
+        "revisions_count", "files_changed", "dependencies_added",
+        "notes", "completion_report"
+    }
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    if not clean:
+        return {"error": "No valid fields to update."}
+    p = ph()
+    set_clause = ", ".join(f"{k}={p}" for k in clean.keys())
+    values = list(clean.values()) + [task_id]
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE code_tasks SET {set_clause} WHERE id={p}", values)
+        conn.commit()
+        return {"updated": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def get_code_tasks(status=None, project=None, limit=50):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        q = "SELECT * FROM code_tasks WHERE 1=1"
+        params = []
+        if status:
+            q += f" AND status={p}"; params.append(status)
+        if project:
+            q += f" AND project={p}"; params.append(project)
+        q += " ORDER BY created_at DESC"
+        if limit:
+            q += f" LIMIT {int(limit)}"
+        cur.execute(q, params)
+        return [row(r) for r in cur.fetchall()]
+    except Exception:
+        return []
     finally:
         conn.close()
 

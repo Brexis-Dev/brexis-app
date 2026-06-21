@@ -342,6 +342,22 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "web_search",
+        "description": (
+            "Search the web via Brave Search. Use for current pricing, Switch limited edition announcements, "
+            "market trends, release dates, fabrication references, or any information Brexis needs that isn't "
+            "in his existing tools. Returns titles, URLs, and snippets. Scoped — no open browsing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "count": {"type": "integer", "description": "Number of results to return (default 5, max 10)"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "create_task",
         "description": "Create a new task in Brexis's project tracking system. Use when Nate mentions something that needs to get done, follow up on, or track.",
         "input_schema": {
@@ -550,6 +566,93 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["gcode_path"]
+        }
+    },
+    # ── Claude Code collaboration tools ──────────────────────────────────────
+    {
+        "name": "create_code_task",
+        "description": (
+            "Create a Claude Code task brief and log it. Use when Brexis is handing a build task to Claude Code. "
+            "Small tasks auto-proceed. Medium tasks require a single word confirm from Nate. "
+            "Major tasks require explicit approval with the full brief before handing off."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_name": {"type": "string", "description": "Short descriptive name for the task, e.g. 'Add print history to fabrication dashboard'"},
+                "size": {
+                    "type": "string",
+                    "enum": ["small", "medium", "major"],
+                    "description": "small: <50 lines, single file, no schema/deps. medium: 50-200 lines, multi-file. major: 200+ lines, new features, schema changes, or new deps."
+                },
+                "project": {
+                    "type": "string",
+                    "enum": ["switch-resale", "purple-horizon", "rocket-fuel", "apparel", "fabrication", "general"],
+                    "description": "Which project this task belongs to"
+                },
+                "approved_by": {
+                    "type": "string",
+                    "enum": ["auto", "nate"],
+                    "description": "auto for small tasks Brexis handles directly. nate when Nate has explicitly approved."
+                },
+                "brief": {"type": "string", "description": "The full task brief text in the standard Brexis brief format"},
+                "notes": {"type": "string", "description": "Any additional Brexis notes not in the brief"}
+            },
+            "required": ["task_name", "size", "project", "brief"]
+        }
+    },
+    {
+        "name": "handoff_code_task",
+        "description": "Mark a code task as handed off to Claude Code. Call this when you are actually sending the brief to Claude Code for execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "The code task ID to mark as handed off"}
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
+        "name": "review_code_output",
+        "description": (
+            "Log Brexis's review of Claude Code's output. Run the review checklist and record the outcome. "
+            "Must be called before anything is considered done."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "The code task ID being reviewed"},
+                "outcome": {
+                    "type": "string",
+                    "enum": ["approved", "revise", "escalate"],
+                    "description": "approved: clean, ready to merge. revise: send back with notes. escalate: needs Nate's decision."
+                },
+                "files_changed": {"type": "string", "description": "Comma-separated list of files Claude Code changed"},
+                "dependencies_added": {"type": "string", "description": "Any new packages added, or 'none'"},
+                "completion_report": {"type": "string", "description": "Claude Code's completion report text"},
+                "notes": {"type": "string", "description": "Brexis review notes — what passed, what needs fixing, or why escalating"}
+            },
+            "required": ["task_id", "outcome", "notes"]
+        }
+    },
+    {
+        "name": "list_code_tasks",
+        "description": "List Claude Code tasks from the task log. Filter by status or project.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["queued", "in-progress", "review", "completed", "cancelled"],
+                    "description": "Filter by task status"
+                },
+                "project": {
+                    "type": "string",
+                    "enum": ["switch-resale", "purple-horizon", "rocket-fuel", "apparel", "fabrication", "general"],
+                    "description": "Filter by project"
+                }
+            },
+            "required": []
         }
     },
     {
@@ -870,6 +973,26 @@ def execute_tool(name, inputs, user_id):
             lines.append(f"- Error: {r['error']}")
         return "\n".join(lines)
 
+    if name == "web_search":
+        import gateway
+        query = inputs["query"]
+        count = min(inputs.get("count", 5), 10)
+        r = gateway.brave_search(query, count)
+        if not r.get("found"):
+            db.log_task("search", "web_search", f"FAILED: {r.get('error','')}", "failed")
+            return f"Search failed: {r.get('error', 'unknown error')}"
+        db.log_task("search", "web_search", query, "success")
+        results = r.get("results", [])
+        if not results:
+            return f"No results found for: {query}"
+        lines = [f"Search results for: {query}\n"]
+        for i, res in enumerate(results, 1):
+            lines.append(f"{i}. {res.get('title','')}")
+            lines.append(f"   {res.get('url','')}")
+            if res.get("description"):
+                lines.append(f"   {res['description'][:200]}")
+        return "\n".join(lines)
+
     if name == "create_task":
         result = db.create_task(
             user_id,
@@ -1038,6 +1161,114 @@ def execute_tool(name, inputs, user_id):
             return f"Failed to start print: {r.get('error', 'unknown error')}"
         db.log_task("fabrication", "send_to_printer", f"Started: {r.get('filename','')}", "success")
         return f"Print started — {r.get('filename', gcode_path)} is now printing on the AD5X."
+
+    if name == "create_code_task":
+        result = db.create_code_task(
+            task_name=inputs["task_name"],
+            size=inputs["size"],
+            project=inputs["project"],
+            approved_by=inputs.get("approved_by", "auto"),
+            brief=inputs.get("brief"),
+            notes=inputs.get("notes"),
+        )
+        if "error" in result:
+            db.log_task("code_tasks", "create", result["error"], "failed")
+            return f"Failed to create code task: {result['error']}"
+        task_id = result["id"]
+        db.log_task("code_tasks", "create", f"TASK-{task_id:04d}: {inputs['task_name']} [{inputs['size']}]", "success")
+        size = inputs["size"]
+        if size == "small":
+            return (
+                f"Code task logged — TASK-{task_id:04d}.\n"
+                f"Size: small — auto-approved, handing off to Claude Code now.\n\n"
+                f"--- BREXIS TASK BRIEF — TASK-{task_id:04d} ---\n{inputs['brief']}"
+            )
+        elif size == "medium":
+            return (
+                f"Code task logged — TASK-{task_id:04d}.\n"
+                f"Size: medium — needs your confirm before I hand it off.\n\n"
+                f"{inputs['brief']}\n\nSay 'go' to hand this off to Claude Code."
+            )
+        else:
+            return (
+                f"Code task logged — TASK-{task_id:04d}.\n"
+                f"Size: major — this needs your explicit sign-off.\n\n"
+                f"--- TASK BRIEF ---\n{inputs['brief']}\n\n"
+                f"Review the brief and approve before I engage Claude Code."
+            )
+
+    if name == "handoff_code_task":
+        task_id = inputs["task_id"]
+        result = db.update_code_task(task_id, {"status": "in-progress", "handed_off_at": "CURRENT_TIMESTAMP_PLACEHOLDER"})
+        conn = db.get_db()
+        try:
+            cur = conn.cursor()
+            p = db.ph()
+            cur.execute(f"UPDATE code_tasks SET status={p}, handed_off_at=CURRENT_TIMESTAMP WHERE id={p}", ("in-progress", task_id))
+            conn.commit()
+        finally:
+            conn.close()
+        db.log_task("code_tasks", "handoff", f"TASK-{task_id:04d} handed to Claude Code", "success")
+        return f"TASK-{task_id:04d} marked in-progress. Brief sent to Claude Code."
+
+    if name == "review_code_output":
+        task_id  = inputs["task_id"]
+        outcome  = inputs["outcome"]
+        notes    = inputs["notes"]
+        fields = {
+            "review_outcome":    outcome,
+            "notes":             notes,
+            "completion_report": inputs.get("completion_report", ""),
+            "files_changed":     inputs.get("files_changed", ""),
+            "dependencies_added": inputs.get("dependencies_added", "none"),
+        }
+        if outcome == "approved":
+            fields["status"] = "completed"
+        elif outcome == "revise":
+            conn = db.get_db()
+            try:
+                cur = conn.cursor()
+                p = db.ph()
+                cur.execute(f"UPDATE code_tasks SET revisions_count=revisions_count+1 WHERE id={p}", (task_id,))
+                conn.commit()
+            finally:
+                conn.close()
+            fields["status"] = "in-progress"
+        else:
+            fields["status"] = "review"
+        db.update_code_task(task_id, fields)
+        if outcome == "approved":
+            conn = db.get_db()
+            try:
+                cur = conn.cursor()
+                p = db.ph()
+                cur.execute(f"UPDATE code_tasks SET completed_at=CURRENT_TIMESTAMP WHERE id={p}", (task_id,))
+                conn.commit()
+            finally:
+                conn.close()
+        db.log_task("code_tasks", "review", f"TASK-{task_id:04d} → {outcome}: {notes[:80]}", "success")
+        if outcome == "approved":
+            return f"TASK-{task_id:04d} approved. Clean output — ready to merge.\n\nReview notes: {notes}"
+        elif outcome == "revise":
+            return f"TASK-{task_id:04d} sent back for revision.\n\nWhat needs fixing:\n{notes}"
+        else:
+            return f"TASK-{task_id:04d} escalated to Nate.\n\nReason: {notes}"
+
+    if name == "list_code_tasks":
+        tasks = db.get_code_tasks(
+            status=inputs.get("status"),
+            project=inputs.get("project"),
+        )
+        if not tasks:
+            return "No code tasks found."
+        lines = []
+        for t in tasks:
+            outcome = f" | Review: {t['review_outcome']}" if t.get("review_outcome") else ""
+            lines.append(
+                f"[TASK-{t['id']:04d}] [{t['size'].upper()}] [{t['project']}] "
+                f"{t['task_name']} — {t['status']}{outcome} | {t.get('created_at','')[:10]}"
+            )
+        return f"Code tasks ({len(tasks)}):\n" + "\n".join(lines)
 
     if name == "submit_slice_job":
         model    = inputs["model"]
