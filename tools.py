@@ -337,6 +337,81 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "generate_design",
+        "description": (
+            "Generate a functional 3D model using OpenSCAD. Use for tools, jigs, enclosures, brackets, "
+            "alignment aids, or anything with precise measurements. Brexis writes the OpenSCAD code; "
+            "this tool renders it to an STL file ready for slicing. Returns the local STL path and design ID."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Complete OpenSCAD source code for the design"
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Optional short slug for the design folder, e.g. 'switch-jig-v1'. Auto-generated if omitted."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Plain-language description of what was designed and why — logged with the design."
+                }
+            },
+            "required": ["code", "description"]
+        }
+    },
+    {
+        "name": "generate_artistic_model",
+        "description": (
+            "Generate an organic or artistic 3D model via Meshy AI text-to-3D. Use for figures, crests, "
+            "characters, decorative pieces, emblems, or anything that can't be defined by measurements alone. "
+            "Returns the local STL path, design ID, and thumbnail URL. Takes 2-4 minutes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Detailed text description of the 3D model to generate"
+                },
+                "style": {
+                    "type": "string",
+                    "enum": ["realistic", "cartoon", "sculpture", "pbr"],
+                    "description": "Visual style. Use 'sculpture' for crests/emblems, 'realistic' for functional artistic pieces."
+                },
+                "design_id": {
+                    "type": "string",
+                    "description": "Optional short slug for the design folder. Auto-generated if omitted."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Plain-language description of what was designed and why — logged with the design."
+                }
+            },
+            "required": ["prompt", "description"]
+        }
+    },
+    {
+        "name": "send_to_printer",
+        "description": (
+            "Upload a sliced gcode file to the Flashforge AD5X and start the print. "
+            "Call this after submit_slice_job has completed and returned a gcode path. "
+            "Always confirm with Nate before calling this on a new design."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "gcode_path": {
+                    "type": "string",
+                    "description": "Local path to the .gcode file on the relay machine (returned by the slicer)"
+                }
+            },
+            "required": ["gcode_path"]
+        }
+    },
+    {
         "name": "calculate_profit",
         "description": "Calculate net profit after platform fees for a resale transaction.",
         "input_schema": {
@@ -653,6 +728,59 @@ def execute_tool(name, inputs, user_id):
         if r.get("error"):
             lines.append(f"- Error: {r['error']}")
         return "\n".join(lines)
+
+    if name == "generate_design":
+        code        = inputs["code"]
+        description = inputs.get("description", "")
+        design_id   = inputs.get("design_id")
+        payload = {"code": code}
+        if design_id:
+            payload["design_id"] = design_id
+        r = _call_relay("POST", "/design/openscad", payload)
+        if "error" in r:
+            db.log_task("fabrication", "generate_design", r["error"], "failed")
+            return f"Design generation failed: {r['error']}"
+        db.log_task("fabrication", "generate_design", f"{description} → {r.get('stl_path','')}", "success")
+        return (
+            f"Design rendered successfully.\n"
+            f"- Design ID: {r['design_id']}\n"
+            f"- STL: {r['stl_path']}\n"
+            f"- Size: {r.get('size_kb', '?')}KB\n"
+            f"Ready to slice. Call submit_slice_job with model={r['stl_path']}"
+        )
+
+    if name == "generate_artistic_model":
+        prompt      = inputs["prompt"]
+        description = inputs.get("description", "")
+        style       = inputs.get("style", "realistic")
+        design_id   = inputs.get("design_id")
+        payload = {"prompt": prompt, "style": style}
+        if design_id:
+            payload["design_id"] = design_id
+        r = _call_relay("POST", "/design/meshy", payload)
+        if "error" in r:
+            db.log_task("fabrication", "generate_artistic", r["error"], "failed")
+            return f"Artistic model generation failed: {r['error']}"
+        db.log_task("fabrication", "generate_artistic", f"{description} → {r.get('stl_path','')}", "success")
+        result = (
+            f"Model generated successfully.\n"
+            f"- Design ID: {r['design_id']}\n"
+            f"- STL: {r['stl_path']}\n"
+            f"- Size: {r.get('size_kb', '?')}KB\n"
+        )
+        if r.get("thumbnail"):
+            result += f"- Preview: {r['thumbnail']}\n"
+        result += f"Ready to slice. Call submit_slice_job with model={r['stl_path']}"
+        return result
+
+    if name == "send_to_printer":
+        gcode_path = inputs["gcode_path"]
+        r = _call_relay("POST", "/printer/start", {"gcode_path": gcode_path})
+        if not r.get("ok"):
+            db.log_task("fabrication", "send_to_printer", r.get("error", "failed"), "failed")
+            return f"Failed to start print: {r.get('error', 'unknown error')}"
+        db.log_task("fabrication", "send_to_printer", f"Started: {r.get('filename','')}", "success")
+        return f"Print started — {r.get('filename', gcode_path)} is now printing on the AD5X."
 
     if name == "submit_slice_job":
         model   = inputs["model"]
