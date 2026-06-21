@@ -256,7 +256,7 @@ ID: TASK-[auto]
 Size: [small/medium/major]
 Approved by: [auto/Nate]
 Project: [project name]
-Codebase: C:\Users\nnagl\Claude\Projects\Saturday Morning PJs\[repo]
+Codebase: C:/Users/nnagl/Claude/Projects/Saturday Morning PJs/[repo]
 
 ## Objective
 [What needs to exist that doesn't, or what needs to change and why]
