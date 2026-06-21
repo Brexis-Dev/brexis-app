@@ -222,18 +222,21 @@ def init_db():
             company    TEXT NOT NULL DEFAULT 'Saturday Morning PJs',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
-        # Seed core team if table is empty
+        # Correct misspelled last name in existing records
         _ph = "%s" if pg else "?"
+        cur.execute(f"UPDATE contacts SET name={_ph} WHERE name={_ph}", ("Nate Nagle", "Nate Nagel"))
+        cur.execute(f"UPDATE contacts SET name={_ph} WHERE name={_ph}", ("Leanne Nagle", "Leanne Nagel"))
+        # Seed core team if table is empty
         cur.execute("SELECT COUNT(*) AS cnt FROM contacts")
         row_ = cur.fetchone()
         if (row_["cnt"] if isinstance(row_, dict) else row_[0]) == 0:
             cur.execute(
                 f"INSERT INTO contacts (name, email, role, company) VALUES ({_ph},{_ph},{_ph},{_ph})",
-                ("Nate Nagel", "nate@saturdaymorningpjs.com", "COO", "Saturday Morning PJs")
+                ("Nate Nagle", "nate@saturdaymorningpjs.com", "COO", "Saturday Morning PJs")
             )
             cur.execute(
                 f"INSERT INTO contacts (name, email, role, company) VALUES ({_ph},{_ph},{_ph},{_ph})",
-                ("Leanne Nagel", "leanne@saturdaymorningpjs.com", "CEO", "Saturday Morning PJs")
+                ("Leanne Nagle", "leanne@saturdaymorningpjs.com", "CEO", "Saturday Morning PJs")
             )
         # ── Claude Code task log ──
         cur.execute(f"""CREATE TABLE IF NOT EXISTS code_tasks (
