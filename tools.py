@@ -747,6 +747,7 @@ def execute_tool(name, inputs, user_id):
         return "\n".join(lines)
 
     if name == "send_email":
+        print(f"[tools] send_email handler reached, inputs={inputs}", flush=True)
         import emailer
         subject = inputs.get("subject", "Message from Brexis")
         body = inputs.get("body", "")

@@ -21,9 +21,13 @@ def get_email_from():
 
 
 def send_email(subject, body, to_emails=None, from_email=None):
+    print(f"[emailer] send_email called: subject={subject!r}", flush=True)
     api_key = get_sendgrid_key()
+    print(f"[emailer] api_key present: {bool(api_key)}", flush=True)
+    print(f"[emailer] from={get_email_from()!r} to={to_emails}", flush=True)
     if not api_key:
         msg = "SendGrid API key not configured — add it in /settings"
+        print(f"[emailer] ABORT: {msg}", flush=True)
         logger.warning(msg)
         db.log_task("email", "send_failed", f"No API key. Subject: {subject}", "failed")
         return {"ok": False, "error": msg}
