@@ -427,8 +427,9 @@ def send():
     data = request.get_json()
     user_message = (data.get("message") or "").strip()
     session_id = data.get("session_id")
+    images = data.get("images") or []  # list of {media_type, data} base64 dicts
 
-    if not user_message:
+    if not user_message and not images:
         return jsonify({"error": "Empty message"}), 400
     if not session_id:
         return jsonify({"error": "No session_id"}), 400
@@ -438,14 +439,27 @@ def send():
         return jsonify({"error": "Session not found"}), 404
 
     history = db.get_messages(OWNER_USER_ID, session_id)
-    db.save_message(OWNER_USER_ID, session_id, "user", user_message)
+    db.save_message(OWNER_USER_ID, session_id, "user", user_message or "[image]")
 
     if not history and (not s.get("title") or s["title"] == "New Conversation"):
-        title = user_message[:60] + ("…" if len(user_message) > 60 else "")
+        title = (user_message or "Image shared")[:60] + ("…" if len(user_message) > 60 else "")
         db.update_session_title(OWNER_USER_ID, session_id, title)
 
     msg_list = [{"role": m["role"], "content": m["content"]} for m in history]
-    msg_list.append({"role": "user", "content": user_message})
+
+    # Build user content — text + optional images
+    if images:
+        user_content = []
+        for img in images:
+            user_content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": img["media_type"], "data": img["data"]},
+            })
+        if user_message:
+            user_content.append({"type": "text", "text": user_message})
+        msg_list.append({"role": "user", "content": user_content})
+    else:
+        msg_list.append({"role": "user", "content": user_message})
 
     def generate():
         full_response = ""
