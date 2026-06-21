@@ -223,16 +223,16 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
         # Seed core team if table is empty
+        _ph = "%s" if pg else "?"
         cur.execute("SELECT COUNT(*) AS cnt FROM contacts")
         row_ = cur.fetchone()
         if (row_["cnt"] if isinstance(row_, dict) else row_[0]) == 0:
-            p2 = p
             cur.execute(
-                f"INSERT INTO contacts (name, email, role, company) VALUES ({p2},{p2},{p2},{p2})",
+                f"INSERT INTO contacts (name, email, role, company) VALUES ({_ph},{_ph},{_ph},{_ph})",
                 ("Nate Nagel", "nate@saturdaymorningpjs.com", "COO", "Saturday Morning PJs")
             )
             cur.execute(
-                f"INSERT INTO contacts (name, email, role, company) VALUES ({p2},{p2},{p2},{p2})",
+                f"INSERT INTO contacts (name, email, role, company) VALUES ({_ph},{_ph},{_ph},{_ph})",
                 ("Leanne Nagel", "leanne@saturdaymorningpjs.com", "CEO", "Saturday Morning PJs")
             )
         # ── Claude Code task log ──
