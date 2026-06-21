@@ -103,6 +103,19 @@ def init_db():
             status     TEXT DEFAULT 'success',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        # ── Task tracking ──
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS tasks (
+            id         {auto},
+            user_id    INTEGER NOT NULL,
+            title      TEXT NOT NULL,
+            project    TEXT DEFAULT 'general',
+            status     TEXT DEFAULT 'open',
+            priority   TEXT DEFAULT 'normal',
+            due_date   TEXT,
+            notes      TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
         # ── Inventory tables ──
         cur.execute(f"""CREATE TABLE IF NOT EXISTS games (
             id             {auto},
@@ -401,6 +414,87 @@ def search_inventory(user_id, query):
     finally:
         conn.close()
     return results
+
+
+# ── Task tracking ────────────────────────────────────────────────────────────
+
+def create_task(user_id, title, project="general", priority="normal", due_date=None, notes=None):
+    p = ph()
+    url = os.environ.get("DATABASE_URL", "sqlite:///brexis.db")
+    pg = _is_postgres(url)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO tasks (user_id, title, project, priority, due_date, notes) VALUES ({p},{p},{p},{p},{p},{p})",
+            (user_id, title, project, priority, due_date, notes)
+        )
+        conn.commit()
+        if pg:
+            cur.execute("SELECT lastval()")
+            return {"id": cur.fetchone()[0]}
+        return {"id": cur.lastrowid}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def get_tasks(user_id, project=None, status=None, priority=None):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        q = f"SELECT * FROM tasks WHERE user_id={p}"
+        params = [user_id]
+        if project:
+            q += f" AND project={p}"; params.append(project)
+        if status:
+            q += f" AND status={p}"; params.append(status)
+        if priority:
+            q += f" AND priority={p}"; params.append(priority)
+        q += " ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END, due_date ASC NULLS LAST, created_at ASC"
+        cur.execute(q, params)
+        return [row(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def update_task(user_id, task_id, fields):
+    allowed = {"title", "project", "status", "priority", "due_date", "notes"}
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    if not clean:
+        return {"error": "No valid fields to update."}
+    clean["updated_at"] = "CURRENT_TIMESTAMP"
+    p = ph()
+    set_clause = ", ".join(f"{k}={'CURRENT_TIMESTAMP' if v == 'CURRENT_TIMESTAMP' else p}" for k, v in clean.items())
+    values = [v for v in clean.values() if v != "CURRENT_TIMESTAMP"] + [task_id, user_id]
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE tasks SET {set_clause} WHERE id={p} AND user_id={p}", values)
+        conn.commit()
+        return {"updated": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
+
+def delete_task(user_id, task_id):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM tasks WHERE id={p} AND user_id={p}", (task_id, user_id))
+        conn.commit()
+        return {"deleted": cur.rowcount > 0}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
 
 
 # ── Inventory writes ──────────────────────────────────────────────────────────

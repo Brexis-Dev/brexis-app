@@ -342,6 +342,68 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "create_task",
+        "description": "Create a new task in Brexis's project tracking system. Use when Nate mentions something that needs to get done, follow up on, or track.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":    {"type": "string", "description": "What needs to be done — clear and actionable"},
+                "project":  {"type": "string", "enum": ["switch-resale", "purple-horizon", "rocket-fuel", "apparel", "fabrication", "general"], "description": "Which Saturday Morning PJs project this belongs to"},
+                "priority": {"type": "string", "enum": ["high", "normal", "low"], "description": "Task priority (default: normal)"},
+                "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format, if applicable"},
+                "notes":    {"type": "string", "description": "Additional context or details"}
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "list_tasks",
+        "description": "List tasks from Brexis's project tracker. Filter by project, status, or priority. Use proactively to flag overdue or stalled items.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project":  {"type": "string", "enum": ["switch-resale", "purple-horizon", "rocket-fuel", "apparel", "fabrication", "general"], "description": "Filter by project"},
+                "status":   {"type": "string", "enum": ["open", "in-progress", "blocked", "done"], "description": "Filter by status"},
+                "priority": {"type": "string", "enum": ["high", "normal", "low"], "description": "Filter by priority"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "update_task",
+        "description": "Update a task's status, priority, due date, or notes by ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "Task ID to update"},
+                "fields":  {"type": "object", "description": "Fields to update: status, priority, due_date, notes, title, project"}
+            },
+            "required": ["task_id", "fields"]
+        }
+    },
+    {
+        "name": "complete_task",
+        "description": "Mark a task as done.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "Task ID to mark complete"}
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
+        "name": "delete_task",
+        "description": "Permanently delete a task by ID. Only use when Nate explicitly asks to remove a task.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "Task ID to delete"}
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
         "name": "add_inventory_item",
         "description": "Add a new item to Purple Horizon inventory. Use for games, cards, figures, comics, apparel, or shoes.",
         "input_schema": {
@@ -807,6 +869,71 @@ def execute_tool(name, inputs, user_id):
         if r.get("error"):
             lines.append(f"- Error: {r['error']}")
         return "\n".join(lines)
+
+    if name == "create_task":
+        result = db.create_task(
+            user_id,
+            title=inputs["title"],
+            project=inputs.get("project", "general"),
+            priority=inputs.get("priority", "normal"),
+            due_date=inputs.get("due_date"),
+            notes=inputs.get("notes"),
+        )
+        if "error" in result:
+            db.log_task("tasks", "create", result["error"], "failed")
+            return f"Failed to create task: {result['error']}"
+        db.log_task("tasks", "create", f"[{inputs.get('project','general')}] {inputs['title']}", "success")
+        return f"✓ Task created (ID: {result['id']}): {inputs['title']}"
+
+    if name == "list_tasks":
+        tasks = db.get_tasks(
+            user_id,
+            project=inputs.get("project"),
+            status=inputs.get("status"),
+            priority=inputs.get("priority"),
+        )
+        if not tasks:
+            return "No tasks found."
+        from datetime import date
+        today = date.today().isoformat()
+        lines = []
+        for t in tasks:
+            due = t.get("due_date") or ""
+            overdue = " ⚠ OVERDUE" if due and due < today and t.get("status") != "done" else ""
+            lines.append(
+                f"[{t['id']}] [{t.get('priority','normal').upper()}] [{t.get('project','')}] "
+                f"{t['title']} — {t.get('status','open')}"
+                + (f" | Due: {due}{overdue}" if due else "")
+                + (f" | {t['notes']}" if t.get("notes") else "")
+            )
+        return f"Tasks ({len(tasks)}):\n" + "\n".join(lines)
+
+    if name == "update_task":
+        result = db.update_task(user_id, inputs["task_id"], inputs.get("fields", {}))
+        if "error" in result:
+            return f"Failed to update task: {result['error']}"
+        if not result.get("updated"):
+            return f"No task found with ID {inputs['task_id']}."
+        db.log_task("tasks", "update", f"id={inputs['task_id']} fields={list(inputs.get('fields',{}).keys())}", "success")
+        return f"✓ Task {inputs['task_id']} updated."
+
+    if name == "complete_task":
+        result = db.update_task(user_id, inputs["task_id"], {"status": "done"})
+        if "error" in result:
+            return f"Failed to complete task: {result['error']}"
+        if not result.get("updated"):
+            return f"No task found with ID {inputs['task_id']}."
+        db.log_task("tasks", "complete", f"id={inputs['task_id']}", "success")
+        return f"✓ Task {inputs['task_id']} marked done."
+
+    if name == "delete_task":
+        result = db.delete_task(user_id, inputs["task_id"])
+        if "error" in result:
+            return f"Failed to delete task: {result['error']}"
+        if not result.get("deleted"):
+            return f"No task found with ID {inputs['task_id']}."
+        db.log_task("tasks", "delete", f"id={inputs['task_id']}", "success")
+        return f"✓ Task {inputs['task_id']} deleted."
 
     if name == "add_inventory_item":
         category = inputs["category"]
