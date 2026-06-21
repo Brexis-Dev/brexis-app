@@ -1,6 +1,13 @@
 import json
+import logging
 import os
 from functools import wraps
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
