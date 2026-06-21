@@ -1514,10 +1514,7 @@ def execute_tool(name, inputs, user_id):
         description = inputs.get("description", "")
         style       = inputs.get("style", "realistic")
         design_id   = inputs.get("design_id")
-        meshy_key = db.get_config("MESHY_API_KEY")
-        if not meshy_key:
-            return "Meshy API key not configured. Add it in /settings → Meshy API Key."
-        payload = {"prompt": prompt, "style": style, "meshy_api_key": meshy_key}
+        payload = {"prompt": prompt, "style": style}
         if design_id:
             payload["design_id"] = design_id
         r = _call_relay("POST", "/design/meshy", payload)

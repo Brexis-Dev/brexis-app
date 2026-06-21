@@ -552,7 +552,7 @@ def settings():
             "pricecharting_key", "tcgplayer_key", "shipengine_key",
             "printer_relay_url", "printer_relay_secret",
             "brave_search_key", "claude_code_token",
-            "etsy_api_key", "pinterest_access_token", "meshy_api_key",
+            "etsy_api_key", "pinterest_access_token",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -570,7 +570,6 @@ def settings():
             "claude_code_token": "CLAUDE_CODE_API_TOKEN",
             "etsy_api_key": "ETSY_API_KEY",
             "pinterest_access_token": "PINTEREST_ACCESS_TOKEN",
-            "meshy_api_key": "MESHY_API_KEY",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -602,8 +601,7 @@ def settings():
     masked_brave         = ("BSA-..." + brave_key[-6:]) if len(brave_key) > 10 else ""
     cc_token             = db.get_config("CLAUDE_CODE_API_TOKEN") or ""
     masked_cc_token      = ("..." + cc_token[-6:]) if len(cc_token) > 6 else ""
-    meshy_key            = db.get_config("MESHY_API_KEY") or ""
-    masked_meshy         = ("..." + meshy_key[-6:]) if len(meshy_key) > 6 else ""
+
 
     import discord_bot
     import scheduler as sched
@@ -625,7 +623,6 @@ def settings():
         masked_relay_secret=masked_relay_secret,
         masked_brave=masked_brave,
         masked_cc_token=masked_cc_token,
-        masked_meshy=masked_meshy,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )
