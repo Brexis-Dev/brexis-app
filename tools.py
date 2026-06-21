@@ -173,12 +173,17 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "send_email",
-        "description": "Send an email via SendGrid. Use for test emails, one-off reports, or any message the owner asks to email.",
+        "description": "Send an email via SendGrid. Supports multiple recipients. Use get_contacts to look up addresses. If to_emails is omitted, sends to the EMAIL_TO config address.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "subject": {"type": "string", "description": "Email subject line"},
-                "body": {"type": "string", "description": "Email body content"}
+                "body": {"type": "string", "description": "Email body content (plain text or HTML)"},
+                "to_emails": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of recipient email addresses. Omit to use the default EMAIL_TO config."
+                }
             },
             "required": ["subject", "body"]
         }
@@ -745,8 +750,12 @@ def execute_tool(name, inputs, user_id):
         import emailer
         subject = inputs.get("subject", "Message from Brexis")
         body = inputs.get("body", "")
-        ok = emailer.send_email(subject, body)
-        return "✓ Email sent successfully." if ok else "✗ Email failed — check SendGrid credentials in /settings."
+        to_emails = inputs.get("to_emails")
+        result = emailer.send_email(subject, body, to_emails=to_emails)
+        if result["ok"]:
+            recipients = ", ".join(result.get("recipients", []))
+            return f"Email sent [{result.get('status_code')}] to: {recipients}"
+        return f"Email failed: {result.get('error', 'unknown error')}"
 
     if name == "send_discord_message":
         import discord_bot
