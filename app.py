@@ -638,6 +638,22 @@ def _check_claude_token():
     return stored and token == stored
 
 
+@app.route("/api/relay/register", methods=["POST"])
+def relay_register():
+    """Called by brexis-relay on startup to register its current ngrok URL."""
+    data = request.get_json(force=True, silent=True) or {}
+    secret = data.get("secret", "")
+    stored_secret = db.get_config("PRINTER_RELAY_SECRET") or ""
+    if not stored_secret or secret != stored_secret:
+        return jsonify({"error": "Unauthorized"}), 401
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    db.set_config("PRINTER_RELAY_URL", url)
+    print(f"[relay] Auto-registered relay URL: {url}", flush=True)
+    return jsonify({"ok": True, "url": url})
+
+
 @app.route("/api/code-tasks/pending", methods=["GET"])
 def api_code_tasks_pending():
     if not _check_claude_token():
