@@ -1525,12 +1525,17 @@ def execute_tool(name, inputs, user_id):
         result = (
             f"Model generated successfully.\n"
             f"- Design ID: {r['design_id']}\n"
-            f"- STL: {r['stl_path']}\n"
+            f"- STL: {r.get('stl_path', 'N/A')}\n"
             f"- Size: {r.get('size_kb', '?')}KB\n"
         )
         if r.get("thumbnail"):
             result += f"- Preview: {r['thumbnail']}\n"
-        result += f"Ready to slice. Call submit_slice_job with model={r['stl_path']}"
+        if r.get("glb_url"):
+            result += f"- GLB (viewable): {r['glb_url']}\n"
+        if r.get("fbx_url"):
+            result += f"- FBX: {r['fbx_url']}\n"
+        if r.get("stl_path"):
+            result += f"Ready to slice. Call submit_slice_job with model={r['stl_path']}"
         return result
 
     if name == "send_to_printer":
