@@ -41,6 +41,7 @@ def _call_relay(method, path, json_data=None):
         return {"error": "Printer relay not configured. Add PRINTER_RELAY_URL in /settings → 3D Printer."}
     secret = db.get_config("PRINTER_RELAY_SECRET") or ""
     headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+    headers["ngrok-skip-browser-warning"] = "1"
     try:
         url = relay_url.rstrip("/") + path
         print(f"[relay] {method} {url} payload={json_data}", flush=True)
