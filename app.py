@@ -661,6 +661,14 @@ def api_debug_relay_url():
     return jsonify({"PRINTER_RELAY_URL": db.get_config("PRINTER_RELAY_URL")})
 
 
+@app.route("/api/debug/execute-tool", methods=["GET"])
+def api_debug_execute_tool():
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    result = tool_module.execute_tool("get_print_status", {}, OWNER_USER_ID)
+    return jsonify({"result": result})
+
+
 @app.route("/api/debug/relay-ping", methods=["GET"])
 def api_debug_relay_ping():
     if not _check_claude_token():
