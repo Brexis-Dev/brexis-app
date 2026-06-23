@@ -515,11 +515,16 @@ def send():
                             tool_name = block.name
                             tool_inputs = block.input
                             yield f"data: {json.dumps({'tool': tool_name})}\n\n"
-                            result = tool_module.execute_tool(tool_name, tool_inputs, OWNER_USER_ID)
+                            try:
+                                result = tool_module.execute_tool(tool_name, tool_inputs, OWNER_USER_ID)
+                            except Exception as tool_err:
+                                result = f"Tool error ({tool_name}): {tool_err}"
+                            if result is None:
+                                result = f"Tool {tool_name} returned no result."
                             tool_results.append({
                                 "type": "tool_result",
                                 "tool_use_id": block.id,
-                                "content": result,
+                                "content": str(result),
                             })
 
                     msg_list.append({"role": "assistant", "content": response.content})
