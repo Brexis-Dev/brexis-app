@@ -661,6 +661,21 @@ def api_debug_relay_url():
     return jsonify({"PRINTER_RELAY_URL": db.get_config("PRINTER_RELAY_URL")})
 
 
+@app.route("/api/debug/relay-ping", methods=["GET"])
+def api_debug_relay_ping():
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    import requests as req
+    relay_url = db.get_config("PRINTER_RELAY_URL") or ""
+    secret = db.get_config("PRINTER_RELAY_SECRET") or ""
+    headers = {"Authorization": f"Bearer {secret}", "ngrok-skip-browser-warning": "1"}
+    try:
+        r = req.get(relay_url.rstrip("/") + "/health", headers=headers, timeout=15)
+        return jsonify({"status": r.status_code, "body": r.json(), "url": relay_url})
+    except Exception as e:
+        return jsonify({"error": str(e), "url": relay_url})
+
+
 @app.route("/api/code-tasks/pending", methods=["GET"])
 def api_code_tasks_pending():
     if not _check_claude_token():
