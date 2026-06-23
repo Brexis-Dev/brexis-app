@@ -669,11 +669,20 @@ def api_debug_relay_ping():
     relay_url = db.get_config("PRINTER_RELAY_URL") or ""
     secret = db.get_config("PRINTER_RELAY_SECRET") or ""
     headers = {"Authorization": f"Bearer {secret}", "ngrok-skip-browser-warning": "1"}
+    results = {}
+    # Test /health (no auth)
     try:
         r = req.get(relay_url.rstrip("/") + "/health", headers=headers, timeout=15)
-        return jsonify({"status": r.status_code, "body": r.json(), "url": relay_url})
+        results["health"] = {"status": r.status_code, "body": r.text[:200]}
     except Exception as e:
-        return jsonify({"error": str(e), "url": relay_url})
+        results["health"] = {"error": str(e)}
+    # Test /printer/status (auth required) — same call as get_print_status tool
+    try:
+        r = req.get(relay_url.rstrip("/") + "/printer/status", headers=headers, timeout=15)
+        results["printer_status"] = {"status": r.status_code, "body": r.text[:200]}
+    except Exception as e:
+        results["printer_status"] = {"error": str(e)}
+    return jsonify({"url": relay_url, "secret_set": bool(secret), "results": results})
 
 
 @app.route("/api/code-tasks/pending", methods=["GET"])
