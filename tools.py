@@ -1540,11 +1540,17 @@ def execute_tool(name, inputs, user_id):
         return result
 
     if name == "send_to_printer":
-        print("[tools] send_to_printer handler reached", flush=True)
+        import datetime
         gcode_path = inputs["gcode_path"]
         print(f"[tools] send_to_printer called with gcode_path={gcode_path!r}", flush=True)
         r = _call_relay("POST", "/printer/start", {"gcode_path": gcode_path})
-        print(f"[tools] send_to_printer relay response: {r}", flush=True)
+        # Retry once if response came back empty or missing ok/error keys
+        if not r.get("ok") and not r.get("error"):
+            ts = datetime.datetime.now().strftime("%H:%M:%S")
+            print(f"[tools] send_to_printer empty response at {ts} — retrying", flush=True)
+            r = _call_relay("POST", "/printer/start", {"gcode_path": gcode_path})
+            ts2 = datetime.datetime.now().strftime("%H:%M:%S")
+            print(f"[tools] send_to_printer retry result at {ts2}: {r}", flush=True)
         if not r.get("ok"):
             error = r.get("error", "unknown error")
             db.log_task("fabrication", "send_to_printer", f"FAILED path={gcode_path}: {error}", "failed")
