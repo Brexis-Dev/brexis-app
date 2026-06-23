@@ -674,6 +674,15 @@ def api_debug_execute_tool():
     return jsonify({"result": result})
 
 
+@app.route("/api/debug/execute-send-to-printer", methods=["GET"])
+def api_debug_execute_send_to_printer():
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    gcode = "C:\\Users\\nnagl\\Claude\\Projects\\Saturday Morning PJs\\brexis-relay\\designs\\nes-cart-mini-v1\\design.gcode"
+    result = tool_module.execute_tool("send_to_printer", {"gcode_path": gcode}, OWNER_USER_ID)
+    return jsonify({"result": result})
+
+
 @app.route("/api/debug/relay-ping", methods=["GET"])
 def api_debug_relay_ping():
     if not _check_claude_token():
