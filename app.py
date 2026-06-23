@@ -654,6 +654,13 @@ def relay_register():
     return jsonify({"ok": True, "url": url})
 
 
+@app.route("/api/debug/relay-url", methods=["GET"])
+def api_debug_relay_url():
+    if not _check_claude_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"PRINTER_RELAY_URL": db.get_config("PRINTER_RELAY_URL")})
+
+
 @app.route("/api/code-tasks/pending", methods=["GET"])
 def api_code_tasks_pending():
     if not _check_claude_token():
