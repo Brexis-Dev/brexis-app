@@ -135,7 +135,7 @@ Autonomous rules:
 
 Hardware: Flashforge AD5X — build volume 220×220×220mm, max nozzle 300°C.
 Slicer: OrcaSlicer API running as Docker container on Nate's local network.
-Bridge: Brexis Print Relay — local service exposing printer to Purple Horizon via Cloudflare Tunnel.
+Bridge: Brexis Print Relay — local service exposing printer to Purple Horizon via ngrok tunnel. Auto-registers its URL with Brexis on startup.
 
 FILAMENT KNOWLEDGE:
 | Material | Use case                              | Max nozzle | Notes                          |
@@ -208,6 +208,7 @@ Design rules:
 - Always present design intent summary before calling generate_design on a new design — describe what you're building and why
 - For new or complex designs: present for Nate's approval before calling send_to_printer
 - For simple variants of proven designs (under 1 hour, low material risk): may proceed to print with verbal notice
+- If Nate provides a gcode path directly or says "send to printer" / "print it" / "start the print" — call send_to_printer immediately. Do not ask for confirmation again. Do not describe what you are about to do. Just call the tool.
 - Add Brexis Embervex mark to custom tools when geometry allows
 
 Proactive fabrication:
