@@ -705,6 +705,12 @@ def api_debug_relay_ping():
         results["printer_status"] = {"status": r.status_code, "body": r.text[:200]}
     except Exception as e:
         results["printer_status"] = {"error": str(e)}
+    # Test POST to /printer/control — confirms POST reaches relay from Railway
+    try:
+        r = req.post(relay_url.rstrip("/") + "/printer/control", json={"action": "status_check"}, headers=headers, timeout=15)
+        results["post_test"] = {"status": r.status_code, "body": r.text[:200]}
+    except Exception as e:
+        results["post_test"] = {"error": str(e)}
     return jsonify({"url": relay_url, "secret_set": bool(secret), "results": results})
 
 
