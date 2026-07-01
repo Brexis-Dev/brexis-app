@@ -26,9 +26,12 @@ ALLOWED_DOMAINS = {
     "api.search.brave.com",      # Brave Search API
     "openapi.etsy.com",          # Etsy API v3 (read-only)
     "api.pinterest.com",         # Pinterest API v5 (read-only)
+    "web-production-815bd.up.railway.app",  # Purple Horizon /pipeline/* — Nate-approved write, TASK-AUTO-PIPE
 }
 
-WRITE_PERMITTED = set()  # No external writes in Phase 1
+WRITE_PERMITTED = {
+    "web-production-815bd.up.railway.app",  # Purple Horizon /pipeline/submit only
+}
 
 # ── Layer 2: Rate limits ────────────────────────────────────────────────────
 
@@ -627,4 +630,38 @@ def pinterest_search(query, limit=10):
         }
     except Exception as e:
         _audit("API_ERROR", f"Pinterest search: {e}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+# ── Public API: Purple Horizon pipeline ──────────────────────────────────────
+
+PIPELINE_SUBMIT_URL = "https://web-production-815bd.up.railway.app/pipeline/submit"
+
+
+def submit_pipeline_task(title, brief, size="small"):
+    """Submit a task brief to the Purple Horizon /pipeline/submit endpoint."""
+    api_key = db.get_config("brexis_api_key")
+    if not api_key:
+        return {"found": False, "error": "brexis_api_key not configured — add it in /settings"}
+
+    try:
+        import json
+        headers = {"Authorization": f"Bearer {api_key}"}
+        payload = {"title": title, "brief": brief, "size": size}
+        status, raw = _request(PIPELINE_SUBMIT_URL, method="POST", headers=headers, json=payload)
+        data = json.loads(raw)
+
+        if status >= 400:
+            _audit("API_ERROR", f"Pipeline submit failed: {status} {data}", "failed")
+            return {"found": False, "error": data.get("error", f"HTTP {status}")}
+
+        _audit("PIPELINE_SUBMIT", f"task_id={data.get('task_id')} size={size} approved={data.get('approved')}")
+        return {
+            "found":        True,
+            "task_id":      data.get("task_id"),
+            "status":       data.get("status"),
+            "approved":     data.get("approved"),
+        }
+    except Exception as e:
+        _audit("API_ERROR", f"Pipeline submit: {e}", "failed")
         return {"found": False, "error": str(e)}

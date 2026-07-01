@@ -137,6 +137,14 @@
           {% endif %}
           <div class="hint">From app.shipengine.com → API Keys. Enables shipping rate lookups.</div>
         </div>
+        <div class="form-group">
+          <label>Purple Horizon Pipeline Key (brexis_api_key)</label>
+          <input type="password" name="brexis_api_key" placeholder="Paste the brexis_api_key from Purple Horizon /settings..." autocomplete="off">
+          {% if masked_brexis_key %}
+          <div class="current">Current: {{ masked_brexis_key }}</div>
+          {% endif %}
+          <div class="hint">Must match the brexis_api_key generated in Purple Horizon → /settings → Claude Code Pipeline. Used by handoff_code_task to submit briefs to /pipeline/submit.</div>
+        </div>
       </div>
 
       <div class="card">

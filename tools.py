@@ -1602,9 +1602,33 @@ def execute_tool(name, inputs, user_id):
             p = db.ph()
             cur.execute(f"UPDATE code_tasks SET status={p}, handed_off_at=CURRENT_TIMESTAMP WHERE id={p}", ("in-progress", task_id))
             conn.commit()
+            cur.execute(f"SELECT task_name, brief, size FROM code_tasks WHERE id={p}", (task_id,))
+            task_row = db.row(cur.fetchone())
         finally:
             conn.close()
         db.log_task("code_tasks", "handoff", f"TASK-{task_id:04d} handed to Claude Code", "success")
+
+        # Submit to the Purple Horizon pipeline so Claude Code can pick it up via /pipeline/queue.
+        # Internal code_tasks logging above is unchanged — this is in addition to it, not instead of it.
+        if task_row and task_row.get("brief"):
+            import gateway
+            pipe = gateway.submit_pipeline_task(task_row["task_name"], task_row["brief"], task_row["size"])
+            if pipe.get("found"):
+                db.log_task("code_tasks", "pipeline_submit",
+                            f"TASK-{task_id:04d} -> pipeline task_id={pipe['task_id']} approved={pipe['approved']}", "success")
+                return (
+                    f"TASK-{task_id:04d} marked in-progress. Submitted to Purple Horizon pipeline as "
+                    f"task_id={pipe['task_id']} (approved={pipe['approved']})."
+                )
+            else:
+                db.log_task("code_tasks", "pipeline_submit",
+                            f"TASK-{task_id:04d} pipeline submit failed: {pipe.get('error')}", "failed")
+                return (
+                    f"TASK-{task_id:04d} marked in-progress locally, but the Purple Horizon pipeline submit "
+                    f"failed: {pipe.get('error')}. Claude Code will not see this via /pipeline/queue until "
+                    f"this is resolved."
+                )
+
         return f"TASK-{task_id:04d} marked in-progress. Brief sent to Claude Code."
 
     if name == "review_code_output":
