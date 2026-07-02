@@ -644,11 +644,16 @@ def submit_pipeline_task(title, brief, size="small"):
     if not api_key:
         return {"found": False, "error": "brexis_api_key not configured — add it in /settings"}
 
+    status = None
+    raw = None
     try:
         import json
         headers = {"Authorization": f"Bearer {api_key}"}
         payload = {"title": title, "brief": brief, "size": size}
         status, raw = _request(PIPELINE_SUBMIT_URL, method="POST", headers=headers, json=payload)
+        # Log the raw body every time, before attempting to parse it — if parsing fails below,
+        # this is still on record instead of being replaced by a generic parse-error message.
+        _audit("PIPELINE_RAW_RESPONSE", f"status={status} body={raw[:1000]!r}")
         data = json.loads(raw)
 
         if status >= 400:
@@ -663,5 +668,5 @@ def submit_pipeline_task(title, brief, size="small"):
             "approved":     data.get("approved"),
         }
     except Exception as e:
-        _audit("API_ERROR", f"Pipeline submit: {e}", "failed")
+        _audit("API_ERROR", f"Pipeline submit: {e} — status={status} raw={(raw or '')[:1000]!r}", "failed")
         return {"found": False, "error": str(e)}
