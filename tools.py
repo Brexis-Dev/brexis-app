@@ -1793,9 +1793,10 @@ def execute_tool(name, inputs, user_id):
             return "No grails found matching that filter."
         lines = []
         for g in grails:
+            hunter = g["hunter"] or "unassigned"
             tier = g["tier"] or "untiered"
             payout = f"${g['payout']:.2f}" if g["payout"] is not None else "pending tier"
-            lines.append(f"#{g['id']} {g['hunter']} — {g['item_name']} ({tier}) — {payout} [{g['status']}]")
+            lines.append(f"#{g['id']} {hunter} — {g['item_name']} ({tier}) — {payout} [{g['status']}]")
         return "\n".join(lines)
 
     if name == "post_hunter_quest":
