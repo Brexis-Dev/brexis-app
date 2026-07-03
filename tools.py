@@ -660,6 +660,22 @@ TOOL_DEFINITIONS = [
         }
     },
     {
+        "name": "check_pipeline_task",
+        "description": (
+            "Check the status and completion report of a task on the Purple Horizon pipeline. "
+            "Use the pipeline task_id returned by handoff_code_task's result (not the internal code_task id) "
+            "-- they are different numbering. Call this when Nate asks about a handed-off task, or "
+            "proactively after a handoff to check whether Claude Code has finished."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pipeline_task_id": {"type": "integer", "description": "The Purple Horizon pipeline task_id, from handoff_code_task's result text"}
+            },
+            "required": ["pipeline_task_id"]
+        }
+    },
+    {
         "name": "review_code_output",
         "description": (
             "Log Brexis's review of Claude Code's output. Run the review checklist and record the outcome. "
@@ -1630,6 +1646,30 @@ def execute_tool(name, inputs, user_id):
                 )
 
         return f"TASK-{task_id:04d} marked in-progress. Brief sent to Claude Code."
+
+    if name == "check_pipeline_task":
+        pipeline_task_id = inputs["pipeline_task_id"]
+        import gateway
+        result = gateway.check_pipeline_task(pipeline_task_id)
+        if not result.get("found"):
+            db.log_task("code_tasks", "pipeline_check", f"pipeline task_id={pipeline_task_id} check failed: {result.get('error')}", "failed")
+            return f"Could not check pipeline task_id={pipeline_task_id}: {result.get('error')}"
+
+        db.log_task("code_tasks", "pipeline_check", f"pipeline task_id={pipeline_task_id} status={result.get('status')} outcome={result.get('outcome')}", "success")
+
+        lines = [
+            f"Pipeline task_id={pipeline_task_id} — {result.get('title')}",
+            f"Status: {result.get('status')}" + (f" (outcome: {result.get('outcome')})" if result.get("outcome") else ""),
+        ]
+        if not result.get("approved"):
+            lines.append("Not yet approved.")
+        if result.get("budget_warning"):
+            lines.append("WARNING: task is approaching its token budget.")
+        if result.get("claude_response"):
+            lines.append(f"Completion report: {result['claude_response']}")
+        if result.get("error_reason"):
+            lines.append(f"Error reason: {result['error_reason']}")
+        return "\n".join(lines)
 
     if name == "review_code_output":
         task_id  = inputs["task_id"]

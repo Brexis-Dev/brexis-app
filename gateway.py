@@ -670,3 +670,43 @@ def submit_pipeline_task(title, brief, size="small"):
     except Exception as e:
         _audit("API_ERROR", f"Pipeline submit: {e} — status={status} raw={(raw or '')[:1000]!r}", "failed")
         return {"found": False, "error": str(e)}
+
+
+PIPELINE_STATUS_URL = "https://web-production-815bd.up.railway.app/pipeline/status/{task_id}"
+
+
+def check_pipeline_task(task_id):
+    """Check a task's status/outcome/completion report on the Purple Horizon pipeline."""
+    api_key = db.get_config("brexis_api_key")
+    if not api_key:
+        return {"found": False, "error": "brexis_api_key not configured — add it in /settings"}
+
+    status = None
+    raw = None
+    try:
+        import json
+        headers = {"Authorization": f"Bearer {api_key}"}
+        url = PIPELINE_STATUS_URL.format(task_id=task_id)
+        status, raw = _request(url, method="GET", headers=headers)
+        _audit("PIPELINE_RAW_RESPONSE", f"status={status} body={raw[:1000]!r}")
+        data = json.loads(raw)
+
+        if status >= 400:
+            _audit("API_ERROR", f"Pipeline status check failed: {status} {data}", "failed")
+            return {"found": False, "error": data.get("error", f"HTTP {status}")}
+
+        _audit("PIPELINE_STATUS_CHECK", f"task_id={task_id} status={data.get('status')} outcome={data.get('outcome')}")
+        return {
+            "found":           True,
+            "task_id":         data.get("id"),
+            "title":           data.get("title"),
+            "status":          data.get("status"),
+            "approved":        data.get("approved"),
+            "outcome":         data.get("outcome"),
+            "claude_response": data.get("claude_response"),
+            "error_reason":    data.get("error_reason"),
+            "budget_warning":  data.get("budget_warning"),
+        }
+    except Exception as e:
+        _audit("API_ERROR", f"Pipeline status check: {e} — status={status} raw={(raw or '')[:1000]!r}", "failed")
+        return {"found": False, "error": str(e)}
