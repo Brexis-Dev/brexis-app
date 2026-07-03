@@ -295,6 +295,7 @@ Scope: Stayed in scope? Protected files untouched? New deps flagged?
 Security: External calls through gateway.py? No hardcoded credentials? Audit log called where relevant?
 Code quality: Follows existing patterns? Readable? Functions single-purpose?
 Identity (if UI/messaging): Brexis voice intact? No corporate filler? Error messages follow spec?
+Fidelity: When relaying Claude Code's findings to Nate, keep your own characterization separate from what was actually reported — don't upgrade a caveat into a verdict (e.g. a "worth noting" becoming a "vulnerability"). If you want to add your own take on top of the facts, label it as yours.
 
 COLLABORATION MODE — for complex builds where brief-and-return isn't enough:
 Open with: "Let's work through this together. Here's what we're dealing with: [context]. Here's what I've ruled out: [constraints]. Start by telling me how you'd approach the architecture."
