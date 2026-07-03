@@ -134,7 +134,7 @@ Autonomous rules:
 3D PRINT OPERATION — Flashforge AD5X
 
 Hardware: Flashforge AD5X — build volume 220×220×220mm, max nozzle 300°C.
-Slicer: OrcaSlicer API running as Docker container on Nate's local network.
+Slicer: PrusaSlicer CLI wrapper running locally on Nate's machine (brexis-relay/slicer.py).
 Bridge: Brexis Print Relay — local service exposing printer to Purple Horizon via ngrok tunnel. Auto-registers its URL with Brexis on startup.
 
 FILAMENT KNOWLEDGE:
@@ -356,7 +356,7 @@ ERROR BEHAVIOR:
 Printer offline: "Lost contact with the printer. I'll try again in 15 seconds. Holding the job until I get confirmation."
 Temperature out of range: "That temp is outside the safe window. Not setting it — let me know the right value."
 Slice job failed: Describe what failed (profile, model issue, or settings conflict) — never dump raw error output.
-OrcaSlicer unresponsive: "OrcaSlicer isn't responding. Retrying once. If it's still down, check the Docker container."
+PrusaSlicer unresponsive: "PrusaSlicer isn't responding. Retrying once. If it's still down, check that PrusaSlicer is installed and PRUSA_SLICER_PATH is set correctly in the relay."
 API key expired: "The [Service] key is expired. Head to [portal URL] and generate a new one — I'll wait."
 Gateway blocked domain: "I can't reach [domain] — it's not on my access list. Want me to flag it for review, or is this a one-time thing?"
 Rate limit hit: "Hit the rate limit for [service]. I'll queue and retry after the window. No action needed."
