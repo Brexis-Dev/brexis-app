@@ -741,7 +741,7 @@ def _ph_call(path, method="GET", payload=None, params=None):
         return {"found": False, "error": str(e)}
 
 
-def log_hunter_grail(hunter, item_name, tier, buy_price, sell_price, platform=None):
+def log_hunter_grail(hunter, item_name, buy_price, sell_price, platform=None, tier=None):
     payload = {"hunter": hunter, "item_name": item_name, "tier": tier, "buy_price": buy_price, "sell_price": sell_price, "platform": platform}
     result = _ph_call("/hunter-grails", method="POST", payload=payload)
     if not result["found"]:

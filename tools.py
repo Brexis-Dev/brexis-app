@@ -678,18 +678,24 @@ TOOL_DEFINITIONS = [
     # ── Hunters Den ───────────────────────────────────────────────────────────
     {
         "name": "log_hunter_grail",
-        "description": "Log a new grail found by a hunter in Purple Horizon. Net profit and payout are calculated automatically -- do not compute them yourself.",
+        "description": (
+            "Log a new grail found by a hunter in Purple Horizon. Net profit is calculated "
+            "automatically -- do not compute it yourself. Tier is optional: if you don't know it "
+            "yet (or it's not yours to set), omit it -- Nate assigns tiers himself directly in "
+            "Purple Horizon's tier queue, which is what actually triggers the payout calculation. "
+            "Only include tier if Nate explicitly tells you the tier in the same request."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "hunter": {"type": "string", "description": "Hunter's username, e.g. protonix"},
                 "item_name": {"type": "string", "description": "What was found"},
-                "tier": {"type": "string", "enum": ["common", "uncommon", "rare", "epic", "legendary"], "description": "Grail tier, set by Nate"},
+                "tier": {"type": "string", "enum": ["common", "uncommon", "rare", "epic", "legendary"], "description": "Optional -- only set if Nate explicitly states it. Otherwise leave out; Nate tiers it separately in Purple Horizon."},
                 "buy_price": {"type": "number", "description": "What the hunter paid"},
                 "sell_price": {"type": "number", "description": "What it sold for (or is expected to sell for)"},
                 "platform": {"type": "string", "description": "Where it sold, e.g. eBay, Mercari -- affects fee calculation. Optional."}
             },
-            "required": ["hunter", "item_name", "tier", "buy_price", "sell_price"]
+            "required": ["hunter", "item_name", "buy_price", "sell_price"]
         }
     },
     {
@@ -1751,17 +1757,20 @@ def execute_tool(name, inputs, user_id):
 
     if name == "log_hunter_grail":
         import gateway
+        tier = inputs.get("tier")
         result = gateway.log_hunter_grail(
-            inputs["hunter"], inputs["item_name"], inputs["tier"],
-            inputs["buy_price"], inputs["sell_price"], inputs.get("platform"),
+            inputs["hunter"], inputs["item_name"],
+            inputs["buy_price"], inputs["sell_price"], inputs.get("platform"), tier,
         )
         if not result.get("found"):
             db.log_task("hunters_den", "log_grail", f"failed: {result.get('error')}", "failed")
             return f"Could not log grail: {result.get('error')}"
-        db.log_task("hunters_den", "log_grail", f"id={result['id']} hunter={inputs['hunter']} item={inputs['item_name']} tier={inputs['tier']}", "success")
+        db.log_task("hunters_den", "log_grail", f"id={result['id']} hunter={inputs['hunter']} item={inputs['item_name']} tier={tier or 'untiered'}", "success")
+        tier_note = f" ({tier})" if tier else " (untiered -- Nate assigns this in Purple Horizon's tier queue)"
+        payout_line = f"Payout: ${result['payout']:.2f}" if result.get("payout") is not None else "Payout: pending tier assignment"
         return (
-            f"Grail logged — id={result['id']}: {inputs['item_name']} ({inputs['tier']}) for {inputs['hunter']}.\n"
-            f"Net profit: ${result['net_profit']:.2f} | Payout: ${result['payout']:.2f} | Status: {result['status']}"
+            f"Grail logged — id={result['id']}: {inputs['item_name']}{tier_note} for {inputs['hunter']}.\n"
+            f"Net profit: ${result['net_profit']:.2f} | {payout_line} | Status: {result['status']}"
         )
 
     if name == "mark_grail_paid":
@@ -1782,7 +1791,11 @@ def execute_tool(name, inputs, user_id):
         grails = result.get("grails", [])
         if not grails:
             return "No grails found matching that filter."
-        lines = [f"#{g['id']} {g['hunter']} — {g['item_name']} ({g['tier']}) — ${g['payout']:.2f} [{g['status']}]" for g in grails]
+        lines = []
+        for g in grails:
+            tier = g["tier"] or "untiered"
+            payout = f"${g['payout']:.2f}" if g["payout"] is not None else "pending tier"
+            lines.append(f"#{g['id']} {g['hunter']} — {g['item_name']} ({tier}) — {payout} [{g['status']}]")
         return "\n".join(lines)
 
     if name == "post_hunter_quest":
