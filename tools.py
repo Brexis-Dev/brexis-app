@@ -675,6 +675,84 @@ TOOL_DEFINITIONS = [
             "required": ["pipeline_task_id"]
         }
     },
+    # ── Hunters Den ───────────────────────────────────────────────────────────
+    {
+        "name": "log_hunter_grail",
+        "description": "Log a new grail found by a hunter in Purple Horizon. Net profit and payout are calculated automatically -- do not compute them yourself.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hunter": {"type": "string", "description": "Hunter's username, e.g. protonix"},
+                "item_name": {"type": "string", "description": "What was found"},
+                "tier": {"type": "string", "enum": ["common", "uncommon", "rare", "epic", "legendary"], "description": "Grail tier, set by Nate"},
+                "buy_price": {"type": "number", "description": "What the hunter paid"},
+                "sell_price": {"type": "number", "description": "What it sold for (or is expected to sell for)"},
+                "platform": {"type": "string", "description": "Where it sold, e.g. eBay, Mercari -- affects fee calculation. Optional."}
+            },
+            "required": ["hunter", "item_name", "tier", "buy_price", "sell_price"]
+        }
+    },
+    {
+        "name": "mark_grail_paid",
+        "description": "Mark a hunter's grail payout as paid in Purple Horizon.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "grail_id": {"type": "integer", "description": "The grail's id, from log_hunter_grail's result or list_hunter_grails"}
+            },
+            "required": ["grail_id"]
+        }
+    },
+    {
+        "name": "list_hunter_grails",
+        "description": "List logged grails from Purple Horizon, optionally filtered by hunter or payout status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hunter": {"type": "string", "description": "Filter to one hunter's grails"},
+                "status": {"type": "string", "enum": ["pending", "paid"], "description": "Filter by payout status"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "post_hunter_quest",
+        "description": "Create a new hunter quest in Purple Horizon. The bonus_type/bonus_value describe the advertised reward structure -- the actual payout is set explicitly when the quest closes, not computed from this.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "description": "Quest name/type, e.g. 'Most Grails This Week'"},
+                "bonus_type": {"type": "string", "enum": ["percentage", "flat", "multiplier"], "description": "How the advertised bonus is described"},
+                "bonus_value": {"type": "number", "description": "The advertised bonus figure (e.g. 20 for 20%, or a flat dollar amount)"},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD"}
+            },
+            "required": ["type", "bonus_type", "bonus_value"]
+        }
+    },
+    {
+        "name": "close_hunter_quest",
+        "description": "Close a hunter quest and record the winner and their bonus payout. bonus_payout is the actual dollar amount to pay -- decide it yourself or ask Nate, it is not auto-calculated from grail data.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "quest_id": {"type": "integer", "description": "The quest's id"},
+                "winner": {"type": "string", "description": "Winning hunter's username"},
+                "bonus_payout": {"type": "number", "description": "The actual dollar amount to pay the winner"}
+            },
+            "required": ["quest_id", "winner", "bonus_payout"]
+        }
+    },
+    {
+        "name": "get_hunter_ledger",
+        "description": "Get per-hunter payout totals from Purple Horizon (pending, paid, quest bonuses, total earned). Use for vault dispatches and payout questions.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "get_hunter_weekly_summary",
+        "description": "Get the weekly leaderboard, total pending payouts, and top grail of the week from Purple Horizon -- for the weekly vault dispatch.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
     {
         "name": "review_code_output",
         "description": (
@@ -1669,6 +1747,89 @@ def execute_tool(name, inputs, user_id):
             lines.append(f"Completion report: {result['claude_response']}")
         if result.get("error_reason"):
             lines.append(f"Error reason: {result['error_reason']}")
+        return "\n".join(lines)
+
+    if name == "log_hunter_grail":
+        import gateway
+        result = gateway.log_hunter_grail(
+            inputs["hunter"], inputs["item_name"], inputs["tier"],
+            inputs["buy_price"], inputs["sell_price"], inputs.get("platform"),
+        )
+        if not result.get("found"):
+            db.log_task("hunters_den", "log_grail", f"failed: {result.get('error')}", "failed")
+            return f"Could not log grail: {result.get('error')}"
+        db.log_task("hunters_den", "log_grail", f"id={result['id']} hunter={inputs['hunter']} item={inputs['item_name']} tier={inputs['tier']}", "success")
+        return (
+            f"Grail logged — id={result['id']}: {inputs['item_name']} ({inputs['tier']}) for {inputs['hunter']}.\n"
+            f"Net profit: ${result['net_profit']:.2f} | Payout: ${result['payout']:.2f} | Status: {result['status']}"
+        )
+
+    if name == "mark_grail_paid":
+        import gateway
+        grail_id = inputs["grail_id"]
+        result = gateway.mark_grail_paid(grail_id)
+        if not result.get("found"):
+            db.log_task("hunters_den", "mark_paid", f"grail_id={grail_id} failed: {result.get('error')}", "failed")
+            return f"Could not mark grail_id={grail_id} paid: {result.get('error')}"
+        db.log_task("hunters_den", "mark_paid", f"grail_id={grail_id}", "success")
+        return f"Grail id={grail_id} ({result.get('item_name')}) marked paid — ${result.get('payout', 0):.2f} to {result.get('hunter')}."
+
+    if name == "list_hunter_grails":
+        import gateway
+        result = gateway.list_hunter_grails(hunter=inputs.get("hunter"), status=inputs.get("status"))
+        if not result.get("found"):
+            return f"Could not list grails: {result.get('error')}"
+        grails = result.get("grails", [])
+        if not grails:
+            return "No grails found matching that filter."
+        lines = [f"#{g['id']} {g['hunter']} — {g['item_name']} ({g['tier']}) — ${g['payout']:.2f} [{g['status']}]" for g in grails]
+        return "\n".join(lines)
+
+    if name == "post_hunter_quest":
+        import gateway
+        result = gateway.post_hunter_quest(
+            inputs["type"], inputs["bonus_type"], inputs["bonus_value"],
+            inputs.get("start_date"), inputs.get("end_date"),
+        )
+        if not result.get("found"):
+            db.log_task("hunters_den", "post_quest", f"failed: {result.get('error')}", "failed")
+            return f"Could not post quest: {result.get('error')}"
+        db.log_task("hunters_den", "post_quest", f"id={result['id']} type={inputs['type']}", "success")
+        return f"Quest posted — id={result['id']}: {inputs['type']} ({inputs['bonus_type']}: {inputs['bonus_value']})."
+
+    if name == "close_hunter_quest":
+        import gateway
+        quest_id = inputs["quest_id"]
+        result = gateway.close_hunter_quest(quest_id, inputs["winner"], inputs["bonus_payout"])
+        if not result.get("found"):
+            db.log_task("hunters_den", "close_quest", f"quest_id={quest_id} failed: {result.get('error')}", "failed")
+            return f"Could not close quest_id={quest_id}: {result.get('error')}"
+        db.log_task("hunters_den", "close_quest", f"quest_id={quest_id} winner={inputs['winner']} bonus={inputs['bonus_payout']}", "success")
+        return f"Quest id={quest_id} closed — winner: {inputs['winner']}, bonus: ${inputs['bonus_payout']:.2f}."
+
+    if name == "get_hunter_ledger":
+        import gateway
+        result = gateway.get_hunter_ledger()
+        if not result.get("found"):
+            return f"Could not get ledger: {result.get('error')}"
+        ledger = result.get("ledger", [])
+        if not ledger:
+            return "No hunter activity logged yet."
+        lines = [f"{h['hunter']}: earned ${h['total_earned']:.2f} (pending ${h['total_pending']:.2f}, paid ${h['total_paid']:.2f}, quest bonuses ${h['quest_bonuses']:.2f})" for h in ledger]
+        return "\n".join(lines)
+
+    if name == "get_hunter_weekly_summary":
+        import gateway
+        result = gateway.get_hunter_weekly_summary()
+        if not result.get("found"):
+            return f"Could not get weekly summary: {result.get('error')}"
+        leaderboard = result.get("leaderboard", [])
+        lines = ["Weekly leaderboard:"]
+        lines += [f"  {i+1}. {h['hunter']} — ${h['net_profit']:.2f} net profit, {h['grail_count']} grails" for i, h in enumerate(leaderboard)]
+        lines.append(f"Total payouts pending: ${result.get('total_payouts_pending', 0):.2f}")
+        top = result.get("top_grail")
+        if top:
+            lines.append(f"Top grail of the week: {top['item_name']} ({top['hunter']}) — ${top['net_profit']:.2f} net profit")
         return "\n".join(lines)
 
     if name == "review_code_output":

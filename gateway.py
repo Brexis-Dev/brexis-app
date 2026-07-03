@@ -710,3 +710,93 @@ def check_pipeline_task(task_id):
     except Exception as e:
         _audit("API_ERROR", f"Pipeline status check: {e} — status={status} raw={(raw or '')[:1000]!r}", "failed")
         return {"found": False, "error": str(e)}
+
+
+# ── Public API: Hunters Den ──────────────────────────────────────────────────
+
+PURPLE_HORIZON_BASE = "https://web-production-815bd.up.railway.app"
+
+
+def _ph_call(path, method="GET", payload=None, params=None):
+    """Shared caller for Purple Horizon endpoints, authenticated with brexis_api_key."""
+    api_key = db.get_config("brexis_api_key")
+    if not api_key:
+        return {"found": False, "error": "brexis_api_key not configured — add it in /settings"}
+
+    status = None
+    raw = None
+    try:
+        import json
+        headers = {"Authorization": f"Bearer {api_key}"}
+        url = PURPLE_HORIZON_BASE + path
+        status, raw = _request(url, method=method, headers=headers, params=params, json=payload)
+        _audit("PIPELINE_RAW_RESPONSE", f"{method} {path} status={status} body={raw[:1000]!r}")
+        data = json.loads(raw)
+        if status >= 400:
+            _audit("API_ERROR", f"Purple Horizon call failed: {method} {path} {status} {data}", "failed")
+            return {"found": False, "error": data.get("error", f"HTTP {status}")}
+        return {"found": True, "data": data}
+    except Exception as e:
+        _audit("API_ERROR", f"Purple Horizon call: {method} {path}: {e} — status={status} raw={(raw or '')[:1000]!r}", "failed")
+        return {"found": False, "error": str(e)}
+
+
+def log_hunter_grail(hunter, item_name, tier, buy_price, sell_price, platform=None):
+    payload = {"hunter": hunter, "item_name": item_name, "tier": tier, "buy_price": buy_price, "sell_price": sell_price, "platform": platform}
+    result = _ph_call("/hunter-grails", method="POST", payload=payload)
+    if not result["found"]:
+        return result
+    _audit("HUNTER_GRAIL_LOGGED", f"hunter={hunter} item={item_name} tier={tier}")
+    return {"found": True, **result["data"]}
+
+
+def mark_grail_paid(grail_id):
+    result = _ph_call(f"/hunter-grails/{grail_id}/mark-paid", method="POST")
+    if not result["found"]:
+        return result
+    _audit("HUNTER_GRAIL_MARKED_PAID", f"grail_id={grail_id}")
+    return {"found": True, **result["data"]}
+
+
+def list_hunter_grails(hunter=None, status=None):
+    params = {}
+    if hunter:
+        params["hunter"] = hunter
+    if status:
+        params["status"] = status
+    result = _ph_call("/hunter-grails", method="GET", params=params)
+    if not result["found"]:
+        return result
+    return {"found": True, "grails": result["data"]}
+
+
+def post_hunter_quest(quest_type, bonus_type, bonus_value, start_date=None, end_date=None):
+    payload = {"type": quest_type, "bonus_type": bonus_type, "bonus_value": bonus_value, "start_date": start_date, "end_date": end_date}
+    result = _ph_call("/hunter-quests", method="POST", payload=payload)
+    if not result["found"]:
+        return result
+    _audit("HUNTER_QUEST_POSTED", f"type={quest_type} bonus_type={bonus_type} bonus_value={bonus_value}")
+    return {"found": True, **result["data"]}
+
+
+def close_hunter_quest(quest_id, winner, bonus_payout):
+    payload = {"winner": winner, "bonus_payout": bonus_payout}
+    result = _ph_call(f"/hunter-quests/{quest_id}/close", method="POST", payload=payload)
+    if not result["found"]:
+        return result
+    _audit("HUNTER_QUEST_CLOSED", f"quest_id={quest_id} winner={winner} bonus_payout={bonus_payout}")
+    return {"found": True, **result["data"]}
+
+
+def get_hunter_ledger():
+    result = _ph_call("/hunter-ledger", method="GET")
+    if not result["found"]:
+        return result
+    return {"found": True, "ledger": result["data"]}
+
+
+def get_hunter_weekly_summary():
+    result = _ph_call("/hunter-grails/weekly-summary", method="GET")
+    if not result["found"]:
+        return result
+    return {"found": True, **result["data"]}
