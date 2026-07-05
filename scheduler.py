@@ -306,6 +306,55 @@ def job_po_price_monitor():
         db.log_task("scheduler", "po_price_monitor", f"Failed: {e}", "failed")
 
 
+def job_slickdeals_monitor():
+    """Check Slickdeals for new Nintendo-keyword deals -- Mon/Thu/Sat at 9 AM.
+
+    Uses Brave Search (site:slickdeals.net) rather than fetching Slickdeals directly --
+    no new gateway.py allowlist entry needed, and avoids Slickdeals' JS-rendered pages
+    breaking a direct-fetch/scrape approach. Brave Search results don't have a separate
+    structured price field; the title/description text is included as-is (Slickdeals
+    listings normally put price in the title), rather than regex-guessing a price out
+    of free text.
+    """
+    import gateway
+    import emailer
+    import discord_bot
+
+    db.log_task("scheduler", "slickdeals_monitor", "Starting Slickdeals Nintendo check", "running")
+
+    try:
+        result = gateway.brave_search("Nintendo site:slickdeals.net", count=10)
+        if not result.get("found"):
+            db.log_task("scheduler", "slickdeals_monitor", f"No results: {result.get('error')}", "success")
+            return
+
+        new_deals = []
+        for item in result.get("results", []):
+            url = item.get("url", "")
+            if not url or db.is_deal_seen(url):
+                continue
+            new_deals.append(item)
+            db.mark_deal_seen(url, item.get("title", ""))
+
+        if not new_deals:
+            db.log_task("scheduler", "slickdeals_monitor", "No new deals found", "success")
+            return
+
+        lines = [f"- {d.get('title','')}\n  {d.get('description','')}\n  {d.get('url','')}" for d in new_deals]
+        body = "New Nintendo deals on Slickdeals:\n\n" + "\n\n".join(lines)
+        subject = f"Slickdeals Nintendo Alert — {len(new_deals)} new deal(s)"
+
+        emailer.send_email(subject, body)
+        if discord_bot.is_ready():
+            discord_bot.post_message("brexis-alerts", f"**{subject}**\n\n{body}")
+
+        db.log_task("scheduler", "slickdeals_monitor", f"{len(new_deals)} new deal(s) alerted", "success")
+
+    except Exception as e:
+        logger.error(f"Slickdeals monitor failed: {e}")
+        db.log_task("scheduler", "slickdeals_monitor", f"Failed: {e}", "failed")
+
+
 def get_price_alerts():
     """Return all items with alert_triggered=True across to_be_purchased POs."""
     orders = db.list_purchase_orders(status="to_be_purchased")
@@ -377,9 +426,18 @@ def start_scheduler():
         name="PO Price Monitor",
     )
 
+    # Slickdeals Nintendo keyword monitor — Mon/Thu/Sat at 9 AM
+    scheduler.add_job(
+        job_slickdeals_monitor,
+        CronTrigger(day_of_week="mon,thu,sat", hour=9, minute=0),
+        id="slickdeals_monitor",
+        replace_existing=True,
+        name="Slickdeals Nintendo Monitor",
+    )
+
     scheduler.start()
     logger.info("Brexis scheduler started.")
-    db.log_task("scheduler", "start", "APScheduler started with 5 jobs", "success")
+    db.log_task("scheduler", "start", "APScheduler started with 6 jobs", "success")
 
 
 def get_job_status():

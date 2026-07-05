@@ -103,6 +103,12 @@ def init_db():
             status     TEXT DEFAULT 'success',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""")
+        cur.execute(f"""CREATE TABLE IF NOT EXISTS slickdeals_seen (
+            id         {auto},
+            deal_key   TEXT NOT NULL UNIQUE,
+            title      TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
         # ── Task tracking ──
         cur.execute(f"""CREATE TABLE IF NOT EXISTS tasks (
             id         {auto},
@@ -555,6 +561,31 @@ def log_task(category, action, detail="", status="success"):
         conn.commit()
     except Exception as e:
         pass
+    finally:
+        conn.close()
+
+
+def is_deal_seen(deal_key):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM slickdeals_seen WHERE deal_key={p}", (deal_key,))
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def mark_deal_seen(deal_key, title):
+    p = ph()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"INSERT INTO slickdeals_seen (deal_key, title) VALUES ({p},{p})", (deal_key, title))
+            conn.commit()
+        except Exception:
+            conn.rollback()  # already seen -- unique constraint, fine to ignore
     finally:
         conn.close()
 
