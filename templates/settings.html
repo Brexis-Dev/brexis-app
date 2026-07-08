@@ -162,6 +162,14 @@
           {% endif %}
           <div class="hint">Must match RELAY_SECRET in brexis-relay/.env on your local machine.</div>
         </div>
+        <div class="form-group">
+          <label>Meshy API Key</label>
+          <input type="password" name="meshy_key" placeholder="Paste Meshy API key..." autocomplete="off">
+          {% if masked_meshy_key %}
+          <div class="current">Current: {{ masked_meshy_key }}</div>
+          {% endif %}
+          <div class="hint">Used by generate_artistic_model, passed through to the relay on each call. Was previously only in brexis-relay/.env as a fallback -- moving it here attaches it to Brexis directly.</div>
+        </div>
       </div>
 
       <div class="card">

@@ -560,7 +560,7 @@ def settings():
             "printer_relay_url", "printer_relay_secret",
             "brave_search_key", "claude_code_token",
             "etsy_api_key", "pinterest_access_token",
-            "brexis_api_key",
+            "brexis_api_key", "meshy_key",
         ]
         key_map = {
             "api_key": "ANTHROPIC_API_KEY",
@@ -579,6 +579,7 @@ def settings():
             "etsy_api_key": "ETSY_API_KEY",
             "pinterest_access_token": "PINTEREST_ACCESS_TOKEN",
             "brexis_api_key": "brexis_api_key",
+            "meshy_key": "MESHY_API_KEY",
         }
         for field in fields:
             val = request.form.get(field, "").strip()
@@ -612,6 +613,8 @@ def settings():
     masked_cc_token      = ("..." + cc_token[-6:]) if len(cc_token) > 6 else ""
     brexis_key           = db.get_config("brexis_api_key") or ""
     masked_brexis_key    = ("..." + brexis_key[-6:]) if len(brexis_key) > 6 else ""
+    meshy_key            = db.get_config("MESHY_API_KEY") or ""
+    masked_meshy_key     = ("..." + meshy_key[-6:]) if len(meshy_key) > 6 else ""
 
 
     import discord_bot
@@ -635,6 +638,7 @@ def settings():
         masked_brave=masked_brave,
         masked_cc_token=masked_cc_token,
         masked_brexis_key=masked_brexis_key,
+        masked_meshy_key=masked_meshy_key,
         discord_status=discord_status,
         scheduler_status=scheduler_status,
     )

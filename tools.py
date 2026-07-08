@@ -1618,6 +1618,9 @@ def execute_tool(name, inputs, user_id):
         payload = {"prompt": prompt, "style": style}
         if design_id:
             payload["design_id"] = design_id
+        meshy_key = db.get_config("MESHY_API_KEY")
+        if meshy_key:
+            payload["meshy_api_key"] = meshy_key
         r = _call_relay("POST", "/design/meshy", payload)
         if "error" in r:
             db.log_task("fabrication", "generate_artistic", r["error"], "failed")
