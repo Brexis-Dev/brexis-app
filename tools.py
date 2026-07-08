@@ -33,8 +33,14 @@ _FILAMENT_MATRIX = {
 }
 
 
-def _call_relay(method, path, json_data=None):
-    """Call the Brexis Print Relay running on Nate's local network."""
+def _call_relay(method, path, json_data=None, timeout=20):
+    """Call the Brexis Print Relay running on Nate's local network.
+
+    timeout must comfortably exceed whatever the relay-side operation can actually take --
+    generate_meshy's own internal polling loop runs up to 360s, and OpenSCAD rendering
+    allows up to 120s. The old fixed 20s default meant Brexis routinely gave up and
+    reported a false failure/timeout before the relay had even finished successfully.
+    """
     import requests as req
     relay_url = db.get_config("PRINTER_RELAY_URL")
     if not relay_url:
@@ -48,7 +54,7 @@ def _call_relay(method, path, json_data=None):
         if method == "GET":
             r = req.get(url, headers=headers, timeout=15)
         else:
-            r = req.post(url, json=json_data, headers=headers, timeout=20)
+            r = req.post(url, json=json_data, headers=headers, timeout=timeout)
         print(f"[relay] response: status={r.status_code} body={r.text[:500]}", flush=True)
         r.raise_for_status()
         return r.json()
@@ -1597,7 +1603,7 @@ def execute_tool(name, inputs, user_id):
         payload = {"code": code}
         if design_id:
             payload["design_id"] = design_id
-        r = _call_relay("POST", "/design/openscad", payload)
+        r = _call_relay("POST", "/design/openscad", payload, timeout=150)  # OpenSCAD allows up to 120s server-side
         if "error" in r:
             db.log_task("fabrication", "generate_design", r["error"], "failed")
             return f"Design generation failed: {r['error']}"
@@ -1621,7 +1627,7 @@ def execute_tool(name, inputs, user_id):
         meshy_key = db.get_config("MESHY_API_KEY")
         if meshy_key:
             payload["meshy_api_key"] = meshy_key
-        r = _call_relay("POST", "/design/meshy", payload)
+        r = _call_relay("POST", "/design/meshy", payload, timeout=400)  # generate_meshy polls up to 360s server-side
         if "error" in r:
             db.log_task("fabrication", "generate_artistic", r["error"], "failed")
             return f"Artistic model generation failed: {r['error']}"
