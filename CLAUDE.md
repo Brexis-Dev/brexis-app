@@ -14,9 +14,12 @@ Authorization: Bearer <claude_api_key>
 
 Polling the queue with the claude key **atomically claims** any ready task (approved +
 queued) — it flips to in-progress and is yours. Work through the brief. Do not start
-unrequested work. Task IDs are plain integers (e.g. `14`), never `TASK-XXXX` strings —
-if Brexis quotes a `TASK-XXXX` id, the submission never actually reached the pipeline
-(usually a stale-chat relay miss); ask for a fresh submit.
+unrequested work. Pipeline task IDs are plain integers (e.g. `14`). A `TASK-XXXX` id
+is Brexis's *internal* code_tasks record — creating one does NOT submit to the
+pipeline. The submit only happens when Brexis runs `handoff_code_task` (tools.py).
+If Brexis quotes only a `TASK-XXXX` id and the queue is empty, the handoff step was
+skipped or failed — ask him to run handoff_code_task for that id and read back the
+result, which includes the pipeline task_id or the exact failure reason.
 
 Check any task's detail and audit log with:
 
