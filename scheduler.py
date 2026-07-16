@@ -440,7 +440,11 @@ def job_first_light():
                     continue
                 for item in result.get("results", []):
                     url = item.get("url", "")
-                    if not url or url in batch_urls or db.is_deal_seen(url):
+                    # Brave can leak off-site results past a site: query — discovery
+                    # must only ever surface pages from the site it was asked about
+                    if not url or site not in url.lower():
+                        continue
+                    if url in batch_urls or db.is_deal_seen(url):
                         continue
                     batch_urls.add(url)
                     item["source"] = site
