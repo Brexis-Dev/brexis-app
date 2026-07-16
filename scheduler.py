@@ -306,53 +306,180 @@ def job_po_price_monitor():
         db.log_task("scheduler", "po_price_monitor", f"Failed: {e}", "failed")
 
 
-def job_slickdeals_monitor():
-    """Check Slickdeals for new Nintendo-keyword deals -- Mon/Thu/Sat at 9 AM.
+# ── First Light — daily deal monitor + auto-analysis ─────────────────────────
 
-    Uses Brave Search (site:slickdeals.net) rather than fetching Slickdeals directly --
-    no new gateway.py allowlist entry needed, and avoids Slickdeals' JS-rendered pages
-    breaking a direct-fetch/scrape approach. Brave Search results don't have a separate
-    structured price field; the title/description text is included as-is (Slickdeals
-    listings normally put price in the title), rather than regex-guessing a price out
-    of free text.
+FIRST_LIGHT_CHANNEL = "brexis-alerts"
+FIRST_LIGHT_SITES = ("slickdeals.net", "woot.com")
+FIRST_LIGHT_QUERIES = ("Nintendo", "video game")
+
+FEE_EBAY = 0.13          # eBay final-value fee; Facebook Marketplace / Reddit take 0%
+BUY_DEEP_MARGIN = 0.40   # eBay-net margin thresholds for the verdict — tune with Brexis
+TEST_FIRST_MARGIN = 0.15
+
+# Ordered longest-hint-first so "nintendo switch" wins before "switch" etc.
+_FL_PLATFORM_HINTS = (
+    ("nintendo switch", "Switch"), ("switch", "Switch"),
+    ("playstation 5", "PS5"), ("ps5", "PS5"),
+    ("playstation 4", "PS4"), ("ps4", "PS4"),
+    ("xbox series", "Xbox Series X"), ("xbox one", "Xbox One"), ("xbox", "Xbox One"),
+    ("3ds", "3DS"), ("wii u", "Wii U"), ("wii", "Wii"),
+)
+
+
+def _fl_platform(title):
+    low = title.lower()
+    for hint, platform in _FL_PLATFORM_HINTS:
+        if hint in low:
+            return platform
+    return "Switch"  # business default — Switch resale is the active project
+
+
+def _fl_deal_price(deal):
+    """Lowest dollar figure in the headline/description. Deal posts advertise the
+    discounted price, so when was/now figures both appear the lower one is the deal."""
+    import re
+    pattern = re.compile(r"\$\s*(\d+(?:\.\d{1,2})?)")
+    for field in (deal.get("title", ""), deal.get("description", "")):
+        vals = [float(m.group(1)) for m in pattern.finditer(field)]
+        vals = [v for v in vals if 1 <= v <= 5000]
+        if vals:
+            return min(vals)
+    return None
+
+
+def _fl_comp_query(title):
+    """Reduce a deal headline to a product name PriceCharting can match."""
+    import re
+    t = re.sub(r"\$\s*\d+(?:\.\d{1,2})?", " ", title)
+    t = re.sub(r"\([^)]*\)", " ", t)
+    t = re.sub(r"(?i)\b(free shipping|slickdeals|woot|deals?|sale|off|new|w/)\b", " ", t)
+    t = re.sub(r"[|•–—+:]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip()[:60]
+
+
+def _fl_analyze(deal):
+    """Run one deal through the resale framework Brexis uses manually:
+    comp price, margin per selling platform, velocity, buy/pass verdict."""
+    import gateway
+
+    title = deal.get("title", "")
+    platform = _fl_platform(title)
+    query = _fl_comp_query(title)
+    a = {
+        "deal_price": _fl_deal_price(deal),
+        "comp_price": None, "comp_label": None, "comp_url": None,
+        "ebay_net": None, "fb_net": None, "margin_pct": None,
+        "verdict": "MANUAL CHECK", "emoji": "⚪",
+        "ebay_sold_url": gateway.fetch_ebay_sold(query or title, platform)["search_url"],
+    }
+
+    if query:
+        pc = gateway.fetch_pricecharting(query, platform=platform)
+        if pc.get("found"):
+            # Deals are new/sealed stock — prefer the sealed comp, fall back to CIB/loose
+            for label in ("sealed", "cib", "loose"):
+                if pc.get(label):
+                    a["comp_price"], a["comp_label"] = pc[label], label
+                    break
+            a["comp_url"] = pc.get("url")
+
+    if a["deal_price"] and a["comp_price"]:
+        a["ebay_net"] = round(a["comp_price"] * (1 - FEE_EBAY) - a["deal_price"], 2)
+        a["fb_net"] = round(a["comp_price"] - a["deal_price"], 2)
+        a["margin_pct"] = a["ebay_net"] / a["deal_price"]
+        if a["margin_pct"] >= BUY_DEEP_MARGIN:
+            a["verdict"], a["emoji"] = "BUY DEEP", "🟢"
+        elif a["margin_pct"] >= TEST_FIRST_MARGIN:
+            a["verdict"], a["emoji"] = "TEST FIRST", "🟡"
+        else:
+            a["verdict"], a["emoji"] = "PASS", "🔴"
+    return a
+
+
+def _fl_block(deal, a):
+    """One deal as a short Discord-readable block — verdict up front, links last."""
+    price = f"${a['deal_price']:.2f}" if a["deal_price"] else "price n/a"
+    if a["comp_price"]:
+        comp = f"comp {a['comp_label']} ${a['comp_price']:.2f}"
+        nets = f"eBay net {a['ebay_net']:+.2f} ({a['margin_pct'] * 100:.0f}%) · FB/Reddit {a['fb_net']:+.2f}"
+    else:
+        comp, nets = "no comp found", "margins n/a"
+    return "\n".join([
+        f"**{deal.get('title', '')[:120]}** — {deal.get('source', '')}",
+        f"{a['emoji']} **{a['verdict']}** · {price} · {comp} · {nets}",
+        f"velocity n/a · comps: <{a['ebay_sold_url']}>",
+        f"<{deal.get('url', '')}>",
+    ])
+
+
+def job_first_light():
+    """First Light — 5 AM daily deal monitor + auto-analysis.
+
+    Scans Slickdeals and Woot for Nintendo / video game deals via Brave Search
+    site: queries (same approach as the original Slickdeals monitor: no gateway
+    allowlist additions, no fighting JS-rendered pages), runs each unseen deal
+    through the resale analysis, and posts one consolidated report to
+    #brexis-alerts. Velocity (recent sold count) has no automated data source
+    yet, so each deal carries an eBay sold-comps link for the manual check.
     """
     import gateway
     import emailer
     import discord_bot
+    from datetime import date
 
-    db.log_task("scheduler", "slickdeals_monitor", "Starting Slickdeals Nintendo check", "running")
-
+    db.log_task("scheduler", "first_light", "First Light starting", "running")
     try:
-        result = gateway.brave_search("Nintendo site:slickdeals.net", count=10)
-        if not result.get("found"):
-            db.log_task("scheduler", "slickdeals_monitor", f"No results: {result.get('error')}", "success")
+        deals = []
+        batch_urls = set()
+        for site in FIRST_LIGHT_SITES:
+            for kw in FIRST_LIGHT_QUERIES:
+                result = gateway.brave_search(f"{kw} site:{site}", count=10)
+                if not result.get("found"):
+                    db.log_task("scheduler", "first_light",
+                                f"Search failed for '{kw} site:{site}': {result.get('error')}", "running")
+                    continue
+                for item in result.get("results", []):
+                    url = item.get("url", "")
+                    if not url or url in batch_urls or db.is_deal_seen(url):
+                        continue
+                    batch_urls.add(url)
+                    item["source"] = site
+                    deals.append(item)
+
+        if not deals:
+            db.log_task("scheduler", "first_light", "No new deals found", "success")
             return
 
-        new_deals = []
-        for item in result.get("results", []):
-            url = item.get("url", "")
-            if not url or db.is_deal_seen(url):
-                continue
-            new_deals.append(item)
-            db.mark_deal_seen(url, item.get("title", ""))
+        header = f"☀️ **First Light — {date.today()}** — {len(deals)} new deal(s)"
+        blocks = [header] + [_fl_block(d, _fl_analyze(d)) for d in deals]
 
-        if not new_deals:
-            db.log_task("scheduler", "slickdeals_monitor", "No new deals found", "success")
-            return
-
-        lines = [f"- {d.get('title','')}\n  {d.get('description','')}\n  {d.get('url','')}" for d in new_deals]
-        body = "New Nintendo deals on Slickdeals:\n\n" + "\n\n".join(lines)
-        subject = f"Slickdeals Nintendo Alert — {len(new_deals)} new deal(s)"
-
-        emailer.send_email(subject, body)
         if discord_bot.is_ready():
-            discord_bot.post_message("brexis-alerts", f"**{subject}**\n\n{body}")
+            # channel.send caps at 2000 chars — split the consolidated report as needed
+            chunks, current = [], ""
+            for b in blocks:
+                if current and len(current) + len(b) + 2 > 1900:
+                    chunks.append(current)
+                    current = b
+                else:
+                    current = b if not current else current + "\n\n" + b
+            chunks.append(current)
+            for c in chunks:
+                discord_bot.post_message(FIRST_LIGHT_CHANNEL, c)
+            delivered = f"Discord #{FIRST_LIGHT_CHANNEL} ({len(chunks)} message(s))"
+        else:
+            # Discord down — the report still has to reach Nate somewhere
+            emailer.send_email(f"First Light — {len(deals)} new deal(s)", "\n\n".join(blocks))
+            delivered = "email fallback (Discord not ready)"
 
-        db.log_task("scheduler", "slickdeals_monitor", f"{len(new_deals)} new deal(s) alerted", "success")
+        # Marked seen only after delivery so a failed run retries tomorrow
+        for d in deals:
+            db.mark_deal_seen(d["url"], d.get("title", ""))
+
+        db.log_task("scheduler", "first_light", f"{len(deals)} deal(s) analyzed -> {delivered}", "success")
 
     except Exception as e:
-        logger.error(f"Slickdeals monitor failed: {e}")
-        db.log_task("scheduler", "slickdeals_monitor", f"Failed: {e}", "failed")
+        logger.error(f"First Light failed: {e}")
+        db.log_task("scheduler", "first_light", f"Failed: {e}", "failed")
 
 
 def get_price_alerts():
@@ -426,18 +553,20 @@ def start_scheduler():
         name="PO Price Monitor",
     )
 
-    # Slickdeals Nintendo keyword monitor — Mon/Thu/Sat at 9 AM
+    # First Light — daily deal monitor + auto-analysis, 5 AM US Eastern.
+    # Explicit timezone: BackgroundScheduler defaults to server-local time,
+    # which is UTC on Railway — a bare hour=5 would fire at 1 AM in Maryland.
     scheduler.add_job(
-        job_slickdeals_monitor,
-        CronTrigger(day_of_week="mon,thu,sat", hour=9, minute=0),
-        id="slickdeals_monitor",
+        job_first_light,
+        CronTrigger(hour=5, minute=0, timezone="America/New_York"),
+        id="first_light",
         replace_existing=True,
-        name="Slickdeals Nintendo Monitor",
+        name="First Light — Daily Deal Monitor",
     )
 
     scheduler.start()
     logger.info("Brexis scheduler started.")
-    db.log_task("scheduler", "start", "APScheduler started with 6 jobs", "success")
+    db.log_task("scheduler", "start", f"APScheduler started with {len(scheduler.get_jobs())} jobs", "success")
 
 
 def get_job_status():
@@ -460,6 +589,7 @@ def trigger_job(job_id):
         "deadline_alert":      job_deadline_alert,
         "low_inventory_alert": job_low_inventory_alert,
         "po_price_monitor":    job_po_price_monitor,
+        "first_light":         job_first_light,
     }
     fn = job_map.get(job_id)
     if fn:
