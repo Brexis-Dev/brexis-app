@@ -397,7 +397,10 @@ def _fl_analyze(deal):
 
 
 def _fl_block(deal, a):
-    """One deal as a short Discord-readable block — verdict up front, links last."""
+    """One deal as a short Discord block: verdict line, then the deal URL posted
+    bare so Discord unfurls it into a rich preview card (title/description/image)
+    — that unfurl IS the report's visual, do not wrap the deal link in <> which
+    suppresses it. The eBay comps link stays <>-suppressed on purpose."""
     price = f"${a['deal_price']:.2f}" if a["deal_price"] else "price n/a"
     if a["comp_price"]:
         comp = f"comp {a['comp_label']} ${a['comp_price']:.2f}"
@@ -405,10 +408,9 @@ def _fl_block(deal, a):
     else:
         comp, nets = "no comp found", "margins n/a"
     return "\n".join([
-        f"**{deal.get('title', '')[:120]}** — {deal.get('source', '')}",
         f"{a['emoji']} **{a['verdict']}** · {price} · {comp} · {nets}",
         f"velocity n/a · comps: <{a['ebay_sold_url']}>",
-        f"<{deal.get('url', '')}>",
+        deal.get("url", ""),
     ])
 
 
@@ -458,14 +460,18 @@ def job_first_light():
         blocks = [header] + [_fl_block(d, _fl_analyze(d)) for d in deals]
 
         if discord_bot.is_ready():
-            # channel.send caps at 2000 chars — split the consolidated report as needed
-            chunks, current = [], ""
-            for b in blocks:
-                if current and len(current) + len(b) + 2 > 1900:
+            # channel.send caps at 2000 chars, and Discord unfurls at most 5 link
+            # previews per message — split on whichever limit hits first so every
+            # deal keeps its preview card
+            chunks, current, cards = [], "", 0
+            for i, b in enumerate(blocks):
+                is_deal = i > 0  # blocks[0] is the header, no link to unfurl
+                if current and (len(current) + len(b) + 2 > 1900 or (is_deal and cards == 5)):
                     chunks.append(current)
-                    current = b
+                    current, cards = b, (1 if is_deal else 0)
                 else:
                     current = b if not current else current + "\n\n" + b
+                    cards += 1 if is_deal else 0
             chunks.append(current)
             for c in chunks:
                 discord_bot.post_message(FIRST_LIGHT_CHANNEL, c)
