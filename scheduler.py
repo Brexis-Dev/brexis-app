@@ -402,11 +402,13 @@ def _fl_block(deal, a):
     — that unfurl IS the report's visual, do not wrap the deal link in <> which
     suppresses it. The eBay comps link stays <>-suppressed on purpose."""
     price = f"${a['deal_price']:.2f}" if a["deal_price"] else "price n/a"
-    if a["comp_price"]:
-        comp = f"comp {a['comp_label']} ${a['comp_price']:.2f}"
+    comp = f"comp {a['comp_label']} ${a['comp_price']:.2f}" if a["comp_price"] else "no comp found"
+    # Margins exist only when BOTH deal price and comp were found — a deal with a
+    # comp but no detectable price must not reach the numeric format specs
+    if a["ebay_net"] is not None:
         nets = f"eBay net {a['ebay_net']:+.2f} ({a['margin_pct'] * 100:.0f}%) · FB/Reddit {a['fb_net']:+.2f}"
     else:
-        comp, nets = "no comp found", "margins n/a"
+        nets = "margins n/a"
     return "\n".join([
         f"{a['emoji']} **{a['verdict']}** · {price} · {comp} · {nets}",
         f"velocity n/a · comps: <{a['ebay_sold_url']}>",
@@ -457,7 +459,14 @@ def job_first_light():
             return
 
         header = f"☀️ **First Light — {date.today()}** — {len(deals)} new deal(s)"
-        blocks = [header] + [_fl_block(d, _fl_analyze(d)) for d in deals]
+        blocks = [header]
+        for d in deals:
+            # One deal's analysis blowing up must degrade that block, not the report
+            try:
+                blocks.append(_fl_block(d, _fl_analyze(d)))
+            except Exception as e:
+                logger.error(f"First Light: analysis failed for {d.get('url', '')}: {e}")
+                blocks.append(f"⚪ **MANUAL CHECK** · analysis error\n{d.get('url', '')}")
 
         if discord_bot.is_ready():
             # channel.send caps at 2000 chars, and Discord unfurls at most 5 link
