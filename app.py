@@ -749,60 +749,6 @@ def relay_register():
     return jsonify({"ok": True, "url": url})
 
 
-@app.route("/api/debug/relay-url", methods=["GET"])
-def api_debug_relay_url():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    return jsonify({"PRINTER_RELAY_URL": db.get_config("PRINTER_RELAY_URL")})
-
-
-@app.route("/api/debug/execute-tool", methods=["GET"])
-def api_debug_execute_tool():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    result = tool_module.execute_tool("get_print_status", {}, OWNER_USER_ID)
-    return jsonify({"result": result})
-
-
-@app.route("/api/debug/execute-send-to-printer", methods=["GET"])
-def api_debug_execute_send_to_printer():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    gcode = "C:\\Users\\nnagl\\Claude\\Projects\\Saturday Morning PJs\\brexis-relay\\designs\\nes-cart-mini-v1\\design.gcode"
-    result = tool_module.execute_tool("send_to_printer", {"gcode_path": gcode}, OWNER_USER_ID)
-    return jsonify({"result": result})
-
-
-@app.route("/api/debug/relay-ping", methods=["GET"])
-def api_debug_relay_ping():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    import requests as req
-    relay_url = db.get_config("PRINTER_RELAY_URL") or ""
-    secret = db.get_config("PRINTER_RELAY_SECRET") or ""
-    headers = {"Authorization": f"Bearer {secret}", "ngrok-skip-browser-warning": "1"}
-    results = {}
-    # Test /health (no auth)
-    try:
-        r = req.get(relay_url.rstrip("/") + "/health", headers=headers, timeout=15)
-        results["health"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["health"] = {"error": str(e)}
-    # Test /printer/status (auth required) — same call as get_print_status tool
-    try:
-        r = req.get(relay_url.rstrip("/") + "/printer/status", headers=headers, timeout=15)
-        results["printer_status"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["printer_status"] = {"error": str(e)}
-    # Test POST to /printer/control — confirms POST reaches relay from Railway
-    try:
-        r = req.post(relay_url.rstrip("/") + "/printer/control", json={"action": "status_check"}, headers=headers, timeout=15)
-        results["post_test"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["post_test"] = {"error": str(e)}
-    return jsonify({"url": relay_url, "secret_set": bool(secret), "results": results})
-
-
 @app.route("/api/code-tasks/pending", methods=["GET"])
 def api_code_tasks_pending():
     if not _check_claude_token():
