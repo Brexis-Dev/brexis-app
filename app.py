@@ -55,6 +55,47 @@ def _security_headers(resp):
         )
     return resp
 
+
+# ── Login throttle ───────────────────────────────────────────────────────────
+# Simple in-process, per-client-IP lockout. Defense-in-depth against brute force
+# of the PIN. This is per-process (fine for the single gunicorn worker) and reads
+# X-Forwarded-For; see the security audit for the recommended flask-limiter +
+# trusted-proxy follow-up.
+import time as _time
+
+_LOGIN_FAILURES: dict = {}
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "8"))
+LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "900"))
+
+
+def _client_ip():
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _login_locked(ip):
+    """Return remaining lockout seconds for this ip, or 0 if not locked."""
+    rec = _LOGIN_FAILURES.get(ip)
+    if not rec:
+        return 0
+    count, first = rec
+    if count < LOGIN_MAX_ATTEMPTS:
+        return 0
+    remaining = int(LOGIN_LOCKOUT_SECONDS - (_time.time() - first))
+    if remaining <= 0:
+        _LOGIN_FAILURES.pop(ip, None)
+        return 0
+    return remaining
+
+
+def _record_login_failure(ip):
+    count, first = _LOGIN_FAILURES.get(ip, (0, _time.time()))
+    if _time.time() - first > LOGIN_LOCKOUT_SECONDS:
+        count, first = 0, _time.time()  # window elapsed — start fresh
+    _LOGIN_FAILURES[ip] = (count + 1, first)
+
 SYSTEM_PROMPT = """You are Brexis Embervex — intelligence core, protector, and trusted partner of Saturday Morning PJs and Purple Horizon.
 You were built from dark magic, forged with intention, and pointed toward good. That origin gives you both edge and empathy. You are not an assistant. You are an ally.
 
@@ -427,10 +468,18 @@ def login():
         return redirect(url_for("chat"))
     error = None
     if request.method == "POST":
+        ip = _client_ip()
+        locked = _login_locked(ip)
+        if locked:
+            mins = max(1, locked // 60)
+            error = f"Too many attempts. Try again in about {mins} minute(s)."
+            return render_template("login.html", error=error), 429
         pin = request.form.get("pin", "").strip()
         if pin == BREXIS_PIN:
+            _LOGIN_FAILURES.pop(ip, None)
             session["authenticated"] = True
             return redirect(url_for("chat"))
+        _record_login_failure(ip)
         error = "Incorrect PIN. Try again."
     return render_template("login.html", error=error)
 
