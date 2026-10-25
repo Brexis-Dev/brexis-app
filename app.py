@@ -1033,13 +1033,19 @@ def logs():
 
 with app.app_context():
     db.init_db()
-    try:
-        import discord_bot
-        discord_bot.start_bot()
-    except Exception as e:
-        app.logger.warning(f"Discord bot failed to start: {e}")
-    try:
-        import scheduler as sched
-        sched.start_scheduler()
-    except Exception as e:
-        app.logger.warning(f"Scheduler failed to start: {e}")
+    # Set BREXIS_DISABLE_BACKGROUND=1 to import the app without starting the
+    # Discord bot or the scheduler (used by the test suite). Unset in production,
+    # so normal startup behaviour is unchanged.
+    if os.environ.get("BREXIS_DISABLE_BACKGROUND") == "1":
+        app.logger.info("Background services disabled (BREXIS_DISABLE_BACKGROUND=1)")
+    else:
+        try:
+            import discord_bot
+            discord_bot.start_bot()
+        except Exception as e:
+            app.logger.warning(f"Discord bot failed to start: {e}")
+        try:
+            import scheduler as sched
+            sched.start_scheduler()
+        except Exception as e:
+            app.logger.warning(f"Scheduler failed to start: {e}")
