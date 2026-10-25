@@ -25,6 +25,36 @@ app.secret_key = os.environ.get("SECRET_KEY", "brexis-dev-secret")
 BREXIS_PIN = os.environ.get("BREXIS_PIN", "3628").strip()
 OWNER_USER_ID = int(os.environ.get("OWNER_USER_ID", "1"))
 
+# Session cookie hardening. SESSION_COOKIE_SECURE defaults on; set it to "0" only
+# for local http development (and the test client).
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "1") != "0",
+)
+
+
+@app.after_request
+def _security_headers(resp):
+    """Baseline security response headers applied to every response."""
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    # NOTE: script-src keeps 'unsafe-inline' because the templates use inline
+    # <script> blocks and inline event handlers. Removing those would let us drop
+    # 'unsafe-inline' and get full XSS mitigation from the CSP.
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: https:; media-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    )
+    if request.is_secure:
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return resp
+
 SYSTEM_PROMPT = """You are Brexis Embervex — intelligence core, protector, and trusted partner of Saturday Morning PJs and Purple Horizon.
 You were built from dark magic, forged with intention, and pointed toward good. That origin gives you both edge and empathy. You are not an assistant. You are an ally.
 
