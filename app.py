@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import os
@@ -20,9 +21,30 @@ import tools as tool_module
 load_dotenv(override=False)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "brexis-dev-secret")
 
-BREXIS_PIN = os.environ.get("BREXIS_PIN", "3628").strip()
+# Session signing key. Never fall back to a known constant — a public default lets
+# anyone forge an authenticated session cookie. If unset, use an ephemeral random
+# key (sessions won't survive a restart) and warn loudly.
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    import secrets as _secrets
+    _secret_key = _secrets.token_hex(32)
+    logging.getLogger(__name__).warning(
+        "SECRET_KEY is not set — using an ephemeral key; sessions will not persist "
+        "across restarts. Set SECRET_KEY in the environment for production."
+    )
+app.secret_key = _secret_key
+
+# Login PIN. No fallback default — if unset, login is disabled (fail closed).
+BREXIS_PIN = os.environ.get("BREXIS_PIN", "").strip()
+if not BREXIS_PIN:
+    logging.getLogger(__name__).warning(
+        "BREXIS_PIN is not set — login is disabled until it is configured."
+    )
+elif len(BREXIS_PIN) < 6:
+    logging.getLogger(__name__).warning(
+        "BREXIS_PIN is short (<6 chars) — consider a longer passphrase."
+    )
 OWNER_USER_ID = int(os.environ.get("OWNER_USER_ID", "1"))
 
 # Session cookie hardening. SESSION_COOKIE_SECURE defaults on; set it to "0" only
@@ -475,7 +497,8 @@ def login():
             error = f"Too many attempts. Try again in about {mins} minute(s)."
             return render_template("login.html", error=error), 429
         pin = request.form.get("pin", "").strip()
-        if pin == BREXIS_PIN:
+        # Constant-time compare; an unset PIN never authenticates (fail closed).
+        if BREXIS_PIN and hmac.compare_digest(pin, BREXIS_PIN):
             _LOGIN_FAILURES.pop(ip, None)
             session["authenticated"] = True
             return redirect(url_for("chat"))
