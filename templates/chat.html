@@ -513,9 +513,10 @@ async function send() {
           const p = JSON.parse(line.slice(6));
           if (p.text) {
             bubble.textContent += p.text;
-            // Eagerly render URLs as links during streaming
+            // Eagerly render URLs as links during streaming.
+            // Escape first — never assign unescaped model/tool text to innerHTML.
             if (p.text.includes('http')) {
-              const raw = bubble.textContent;
+              const raw = esc(bubble.textContent);
               bubble.innerHTML = raw.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
             }
             scrollBottom();

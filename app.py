@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import os
@@ -20,10 +21,102 @@ import tools as tool_module
 load_dotenv(override=False)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "brexis-dev-secret")
 
-BREXIS_PIN = os.environ.get("BREXIS_PIN", "3628").strip()
+# Session signing key. Never fall back to a known constant — a public default lets
+# anyone forge an authenticated session cookie. If unset, use an ephemeral random
+# key (sessions won't survive a restart) and warn loudly.
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    import secrets as _secrets
+    _secret_key = _secrets.token_hex(32)
+    logging.getLogger(__name__).warning(
+        "SECRET_KEY is not set — using an ephemeral key; sessions will not persist "
+        "across restarts. Set SECRET_KEY in the environment for production."
+    )
+app.secret_key = _secret_key
+
+# Login PIN. No fallback default — if unset, login is disabled (fail closed).
+BREXIS_PIN = os.environ.get("BREXIS_PIN", "").strip()
+if not BREXIS_PIN:
+    logging.getLogger(__name__).warning(
+        "BREXIS_PIN is not set — login is disabled until it is configured."
+    )
+elif len(BREXIS_PIN) < 6:
+    logging.getLogger(__name__).warning(
+        "BREXIS_PIN is short (<6 chars) — consider a longer passphrase."
+    )
 OWNER_USER_ID = int(os.environ.get("OWNER_USER_ID", "1"))
+
+# Session cookie hardening. SESSION_COOKIE_SECURE defaults on; set it to "0" only
+# for local http development (and the test client).
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "1") != "0",
+)
+
+
+@app.after_request
+def _security_headers(resp):
+    """Baseline security response headers applied to every response."""
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    # NOTE: script-src keeps 'unsafe-inline' because the templates use inline
+    # <script> blocks and inline event handlers. Removing those would let us drop
+    # 'unsafe-inline' and get full XSS mitigation from the CSP.
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: https:; media-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    )
+    if request.is_secure:
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return resp
+
+
+# ── Login throttle ───────────────────────────────────────────────────────────
+# Simple in-process, per-client-IP lockout. Defense-in-depth against brute force
+# of the PIN. This is per-process (fine for the single gunicorn worker) and reads
+# X-Forwarded-For; see the security audit for the recommended flask-limiter +
+# trusted-proxy follow-up.
+import time as _time
+
+_LOGIN_FAILURES: dict = {}
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "8"))
+LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "900"))
+
+
+def _client_ip():
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _login_locked(ip):
+    """Return remaining lockout seconds for this ip, or 0 if not locked."""
+    rec = _LOGIN_FAILURES.get(ip)
+    if not rec:
+        return 0
+    count, first = rec
+    if count < LOGIN_MAX_ATTEMPTS:
+        return 0
+    remaining = int(LOGIN_LOCKOUT_SECONDS - (_time.time() - first))
+    if remaining <= 0:
+        _LOGIN_FAILURES.pop(ip, None)
+        return 0
+    return remaining
+
+
+def _record_login_failure(ip):
+    count, first = _LOGIN_FAILURES.get(ip, (0, _time.time()))
+    if _time.time() - first > LOGIN_LOCKOUT_SECONDS:
+        count, first = 0, _time.time()  # window elapsed — start fresh
+    _LOGIN_FAILURES[ip] = (count + 1, first)
 
 SYSTEM_PROMPT = """You are Brexis Embervex — intelligence core, protector, and trusted partner of Saturday Morning PJs and Purple Horizon.
 You were built from dark magic, forged with intention, and pointed toward good. That origin gives you both edge and empathy. You are not an assistant. You are an ally.
@@ -397,10 +490,19 @@ def login():
         return redirect(url_for("chat"))
     error = None
     if request.method == "POST":
+        ip = _client_ip()
+        locked = _login_locked(ip)
+        if locked:
+            mins = max(1, locked // 60)
+            error = f"Too many attempts. Try again in about {mins} minute(s)."
+            return render_template("login.html", error=error), 429
         pin = request.form.get("pin", "").strip()
-        if pin == BREXIS_PIN:
+        # Constant-time compare; an unset PIN never authenticates (fail closed).
+        if BREXIS_PIN and hmac.compare_digest(pin, BREXIS_PIN):
+            _LOGIN_FAILURES.pop(ip, None)
             session["authenticated"] = True
             return redirect(url_for("chat"))
+        _record_login_failure(ip)
         error = "Incorrect PIN. Try again."
     return render_template("login.html", error=error)
 
@@ -668,60 +770,6 @@ def relay_register():
     db.set_config("PRINTER_RELAY_URL", url)
     print(f"[relay] Auto-registered relay URL: {url}", flush=True)
     return jsonify({"ok": True, "url": url})
-
-
-@app.route("/api/debug/relay-url", methods=["GET"])
-def api_debug_relay_url():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    return jsonify({"PRINTER_RELAY_URL": db.get_config("PRINTER_RELAY_URL")})
-
-
-@app.route("/api/debug/execute-tool", methods=["GET"])
-def api_debug_execute_tool():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    result = tool_module.execute_tool("get_print_status", {}, OWNER_USER_ID)
-    return jsonify({"result": result})
-
-
-@app.route("/api/debug/execute-send-to-printer", methods=["GET"])
-def api_debug_execute_send_to_printer():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    gcode = "C:\\Users\\nnagl\\Claude\\Projects\\Saturday Morning PJs\\brexis-relay\\designs\\nes-cart-mini-v1\\design.gcode"
-    result = tool_module.execute_tool("send_to_printer", {"gcode_path": gcode}, OWNER_USER_ID)
-    return jsonify({"result": result})
-
-
-@app.route("/api/debug/relay-ping", methods=["GET"])
-def api_debug_relay_ping():
-    if not _check_claude_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    import requests as req
-    relay_url = db.get_config("PRINTER_RELAY_URL") or ""
-    secret = db.get_config("PRINTER_RELAY_SECRET") or ""
-    headers = {"Authorization": f"Bearer {secret}", "ngrok-skip-browser-warning": "1"}
-    results = {}
-    # Test /health (no auth)
-    try:
-        r = req.get(relay_url.rstrip("/") + "/health", headers=headers, timeout=15)
-        results["health"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["health"] = {"error": str(e)}
-    # Test /printer/status (auth required) — same call as get_print_status tool
-    try:
-        r = req.get(relay_url.rstrip("/") + "/printer/status", headers=headers, timeout=15)
-        results["printer_status"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["printer_status"] = {"error": str(e)}
-    # Test POST to /printer/control — confirms POST reaches relay from Railway
-    try:
-        r = req.post(relay_url.rstrip("/") + "/printer/control", json={"action": "status_check"}, headers=headers, timeout=15)
-        results["post_test"] = {"status": r.status_code, "body": r.text[:200]}
-    except Exception as e:
-        results["post_test"] = {"error": str(e)}
-    return jsonify({"url": relay_url, "secret_set": bool(secret), "results": results})
 
 
 @app.route("/api/code-tasks/pending", methods=["GET"])
@@ -1033,13 +1081,19 @@ def logs():
 
 with app.app_context():
     db.init_db()
-    try:
-        import discord_bot
-        discord_bot.start_bot()
-    except Exception as e:
-        app.logger.warning(f"Discord bot failed to start: {e}")
-    try:
-        import scheduler as sched
-        sched.start_scheduler()
-    except Exception as e:
-        app.logger.warning(f"Scheduler failed to start: {e}")
+    # Set BREXIS_DISABLE_BACKGROUND=1 to import the app without starting the
+    # Discord bot or the scheduler (used by the test suite). Unset in production,
+    # so normal startup behaviour is unchanged.
+    if os.environ.get("BREXIS_DISABLE_BACKGROUND") == "1":
+        app.logger.info("Background services disabled (BREXIS_DISABLE_BACKGROUND=1)")
+    else:
+        try:
+            import discord_bot
+            discord_bot.start_bot()
+        except Exception as e:
+            app.logger.warning(f"Discord bot failed to start: {e}")
+        try:
+            import scheduler as sched
+            sched.start_scheduler()
+        except Exception as e:
+            app.logger.warning(f"Scheduler failed to start: {e}")

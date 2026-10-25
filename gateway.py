@@ -242,8 +242,6 @@ def fetch_ebay_sold(title, platform="Switch"):
 
 # ── Public API: PriceCharting ────────────────────────────────────────────────
 
-_PC_DEMO_TOKEN = "c0b53bce27c1bdab90b1605249e600dc43dfd1d5"
-
 
 def _slugify(text):
     text = text.lower().strip()
@@ -263,8 +261,11 @@ def fetch_pricecharting(title, platform="Switch"):
     platform_slug = _PC_PLATFORM_MAP.get(platform, _slugify(platform))
     console_match = _PC_CONSOLE_MATCH.get(platform, platform.lower())
 
+    token = db.get_config("PRICECHARTING_API_KEY")
+    if not token:
+        return {"found": False, "error": "PriceCharting API key not configured — add it in /settings"}
+
     try:
-        token = db.get_config("PRICECHARTING_API_KEY") or _PC_DEMO_TOKEN
         import json
 
         # Strip platform prefix from title if user included it (e.g. "nes zelda" → "zelda")
